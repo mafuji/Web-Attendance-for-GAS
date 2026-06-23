@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-size: 20
+          node-version: 20
 
       - name: Run merge script
         run: |
@@ -40,7 +40,7 @@ jobs:
               if (file === 'appsscript.json' || fs.statSync(filePath).isDirectory()) return;
 
               const content = fs.readFileSync(filePath, 'utf8');
-              if (file.endsWith('.gs')) {
+              if (file.endsWith('.js')) {
                 gsContent += `\n// --- File: ${file} ---\n` + content + '\n';
               } else if (file.endsWith('.html')) {
                 // 拡張子を除いたファイル名をキーにする
@@ -66,8 +66,8 @@ jobs:
           }
 
           // 2つのアプリを実行
-          mergeApp('main-app', 'main-app-merged.gs');
-          mergeApp('controller-app', 'controller-app-merged.gs');
+          mergeApp('main-app', 'main-app-merged.js');
+          mergeApp('controller-app', 'controller-app-merged.js');
           EOF
 
       - name: Commit and Push changes
@@ -76,7 +76,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           
           # 変更がある場合のみコミットしてpush
-          git add main-app-merged.gs controller-app-merged.gs
+          git add main-app-merged.js controller-app-merged.js
           if ! git diff --cached --quiet; then
             git commit -m "chore: auto-generated merged GS files [skip ci]"
             git push
