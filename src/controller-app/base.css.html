@@ -1,0 +1,50 @@
+<style>
+  /* 画面全体を固定してスクロールバーを出さない */
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #f8f9fa; /* 目に優しい極薄のグレー */
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* タブレット画面いっぱいに要素を縦並び・中央配置 */
+  .container {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* 上・中・下にきれいに分配 */
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 4vh 0; /* 上下の余白 */
+  }
+
+  /* タイトル（上部） */
+  h2 {
+    font-size: 4vw; /* 画面幅に応じたサイズ */
+    margin: 0;
+    color: #444;
+    letter-spacing: 4px;
+  }
+
+  /* 💡 超巨大4桁数字（中央） */
+  .passcode-display {
+    font-size: 24vw; /* 画面横幅の約1/4サイズ＝画面いっぱいに広がる */
+    font-weight: 900; /* 圧倒的太文字 */
+    line-height: 1;
+    letter-spacing: 2vw; /* 数字同士の間隔 */
+    text-indent: 2vw;    /* letter-spacingによる右寄りを中央に戻す */
+    color: #111;
+    font-family: monospace; /* 数字の幅を統一してガタつきを防止 */
+  }
+
+  /* ステータス・時計（下部） */
+  .status {
+    font-size: 2.5vw;
+    color: #666;
+    margin: 0;
+  }
+</style>

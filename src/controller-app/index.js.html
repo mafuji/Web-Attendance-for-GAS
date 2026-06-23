@@ -1,0 +1,33 @@
+<script>
+  // IPアドレスを取得して、GASのMerge処理を直接呼び出す関数
+  async function updatePasscode() {
+    document.getElementById("status").innerText = "同期中...";
+    
+    try {
+      const response = await fetch('https://api.ipify.org?format=json');
+      const data = await response.json();
+      const ipAddress = data.ip;
+
+      google.script.run
+        .withSuccessHandler((receivedPasscode) => {
+          // 取得した4桁のパスワードを画面に表示
+          document.getElementById("passcode").innerText = receivedPasscode;
+          
+          const now = new Date();
+          document.getElementById("status").innerText = "最終更新: " + now.toLocaleTimeString();
+        })
+        .withFailureHandler((err) => {
+          console.error("GASエラー:", err);
+          document.getElementById("status").innerText = "同期失敗";
+        })
+        .mergeControllerData(sessionId, ipAddress);
+    } catch (err) {
+      console.error("通信エラー:", err);
+      document.getElementById("status").innerText = "接続エラー";
+    }
+  }
+
+  // 初回実行と5秒ごとの定期実行
+  updatePasscode();
+  setInterval(updatePasscode, 5000);
+</script>

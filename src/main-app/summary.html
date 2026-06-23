@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <?!= include("head_common") ?>    
+    <?!= include("base.css") ?>
+    <?!= include("summary.css") ?>
+    <title>Web入退室ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com" defer></script>
+  </head>
+  <body class="dashboard-body">
+    <div class="container-main">
+      <header class="header-section">
+        <h1 class="header-title">Web入退室ダッシュボード</h1>
+        
+        <div class="date-filter">
+          <input type="date" class="date-input" value="2024-03-01">
+          <span class="date-separator">〜</span>
+          <input type="date" class="date-input" value="2024-03-31">
+        </div>
+      </header>
+
+      <section class="stats-grid">
+        <div class="stats-card">
+          <p class="stats-label">全体の平均出席率</p>
+          <p id="stat-avg-rate" class="stats-value text-blue-600">--%</p>
+        </div>
+        
+        <div class="stats-card">
+          <p class="stats-label">現在の在室状況</p>
+          <p id="stat-current-in" class="stats-value">
+            -- <span style="font-size: 1.125rem; color: #64748b; font-weight: 500;">/ -- 名</span>
+          </p>
+        </div>
+      </section>
+
+      <div id="user-list" class="user-list-container"></div>
+    </div>
+
+    <?!= include("summary.js") ?>
+  </body>
+</html>

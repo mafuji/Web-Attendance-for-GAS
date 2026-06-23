@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?!= include("login.css") ?>
+  </head>
+  <body>
+
+    <div class="login-container" id="login-box">
+      <h3>パスワード認証</h3>
+      <input type="password" id="password" placeholder="パスワードを入力">
+      <button id="submit-btn" onclick="submitPassword()">ログイン</button>
+      <div class="error" id="error-msg"></div>
+    </div>
+
+    <?!= include("login.js") ?>
+  </body>
+</html>

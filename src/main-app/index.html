@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <?!= include("head_common") ?>
+    <?!= include("base.css") ?>
+    <?!= include("index.css") ?>
+    <title>Web入退室</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
+  </head>
+  <body>
+    <script>
+      // GAS側からレンダリング時に直接注入されるので、絶対に空にならない
+      const SERVER_SESSION_ID ="<?= sessionId ?>";
+      const requirePassword = <?!= JSON.stringify(requirePassword) ?>;
+    </script>
+
+    <!-- IPチェック -->
+    <script>
+      // 1. GAS側からIPチェックを行うかのフラグを受け取る
+      const useIpControl = <?!= JSON.stringify(useIpControl) ?>;
+      
+      // サーバーから渡された許可IPリストをJS変数として展開
+      const allowedIps = <?!= JSON.stringify(allowedIps) ?>;
+
+      // 非同期でIP判定し、許可外なら画面を書き換える
+      (async function checkIp() {
+        // 2. フラグが false (チェックしない) なら、ここで処理を終了してスキップ
+        if (!useIpControl) {
+          console.log("IPチェックはスキップされました。");
+          return; 
+        }
+
+        try {
+          const res = await fetch('https://api.ipify.org?format=json');
+          const data = await res.json();
+          
+          if (!allowedIps.includes(data.ip)) {
+            // 許可されていないIPなら画面を白紙にしてメッセージを表示
+            document.body.innerHTML = "<h1>アクセス拒否</h1><p>許可されていないIPアドレスからのアクセスです。</p>";
+          }
+        } catch(e) {
+          document.body.innerHTML = "<h1>通信エラー</h1><p>ネットワークを確認してください。</p>";
+        }
+      })();      
+    </script>
+
+    <div id="main">
+      <!-- 読み込み中表示 -->
+      <div v-if="!isReady" class="loading-container">
+        <div class="spinner"></div>
+        <p>読み込み中...</p>
+      </div>
+      
+      <!-- セッション切れ -->
+      <div v-else-if="isSessionExpired" class="expired-container">
+        <div class="expired-card">
+          <div class="expired-icon">⚠️</div>
+          <h2>セッションの有効期限切れ</h2>
+          <p>もう一度打刻用端末からQRコードを読み取ってアクセスしてください。</p>
+        </div>
+      </div>
+
+      <!-- ヘッダー -->
+      <header class="app-header" v-if="isReady && !isSessionExpired">
+        <div class="header-logo">Web入退室</div>
+
+        <div class="header-right">
+          <button class="menu-trigger" @click="isMenuOpen = !isMenuOpen" :class="{ 'is-active': isMenuOpen }">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+
+          <transition name="fade">
+            <nav class="dropdown-menu" v-show="isMenuOpen">
+              <ul>
+                <li v-if="isAdmin"><a href="#" @click.prevent="openDashboard">ダッシュボード</a></li>
+                <li><a href="#" @click.prevent="logout">ログアウト</a></li>
+                <li class="menu-footer">
+                  <span class="user-label">ログイン中：</span>
+                  <span class="user-email">{{ email }}</span>
+                </li>
+              </ul>
+            </nav>
+          </transition>
+        </div>
+      </header>
+
+      <!-- アプリ画面 -->
+      <div id="app" v-if="isReady && !isSessionExpired">
+        <button @click="sendIn" v-show="!isIn" class="button-in">入室</button>
+        <button @click="sendOut" v-show="isIn" class="button-out">退室</button>
+      </div>
+      <div class="last-action" v-if="lastAction.time && !isSessionExpired">
+          前回の打刻：{{ lastAction.time }} （{{ lastAction.status }}）<br/>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.1.5"></script>
+    <?!= include("index.js") ?>
+  </body>
+</html>

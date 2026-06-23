@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <?!= include("base.css") ?>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Web入退室</h2>
+      <div id="passcode" class="passcode-display">----</div>     
+      <div class="status" id="status">同期中...</div>
+    </div>
+  
+    <script>
+      const sessionId = "<?= sessionId ?>";
+    </script>
+    
+    <?!= include("index.js") ?>
+  </body>
+</html>

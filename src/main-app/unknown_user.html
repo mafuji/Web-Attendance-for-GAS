@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+  <div style="font-family: sans-serif; padding: 20px;">
+    <p style="color: red; font-weight: bold;">認証失敗: 未登録のユーザーか、Google Workspaceアカウントでログインしていません。</p>
+    <p>以下のボタンを押してユーザー登録済みのGoogle Workspaceアカウントを選択し直してください。</p>
+    <p>※ユーザー登録が済んでいない場合は管理者にお問い合わせ下さい。</p>
+    <a href="https://accounts.google.com/Logout?continue=https://accounts.google.com/ServiceLogin?continue=${ScriptApp.getService().getUrl()}"
+      target="_top" 
+      style="display: inline-block; padding: 10px 20px; background: #4285f4; color: white; text-decoration: none; border-radius: 4px;">
+      アカウントを切り替える
+    </a>
+  </div>
+</html>

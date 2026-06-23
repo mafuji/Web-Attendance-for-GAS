@@ -1,0 +1,37 @@
+<script>
+  function submitPassword() {
+    const password = document.getElementById('password').value;
+    const errorMsg = document.getElementById('error-msg');
+    const btn = document.getElementById('submit-btn');
+    
+    if (!password) {
+      errorMsg.textContent = 'パスワードを入力してください。';
+      return;
+    }
+    
+    btn.disabled = true;
+    errorMsg.textContent = '認証中...';
+    
+    google.script.run
+      .withSuccessHandler(function(response) {
+        if (response.success) {
+          document.open();
+          document.write(response.html);
+          document.close();
+        } else {
+          errorMsg.textContent = response.message;
+          btn.disabled = false;
+        }
+      })
+      .withFailureHandler(function(err) {
+        errorMsg.textContent = '通信エラーが発生しました。';
+        btn.disabled = false;
+      })
+      .verifyPassword(password);
+  }
+
+  // Enterキーでの送信制御
+  document.getElementById('password').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') submitPassword();
+  });
+</script>

@@ -1,0 +1,181 @@
+<script>
+  Vue.createApp({
+    data() {
+      return {
+        isReady: false,
+        isIn: false,
+        isAdmin: false,
+        isMenuOpen: false, 
+        email: "",
+        sessionId: SERVER_SESSION_ID,
+        requirePassword: requirePassword,
+        isSessionExpired: false,
+        lastAction: { time: "", status: "" }
+      }
+    },
+    async mounted() {
+      this.fetchUserData();
+    },
+    methods: {
+      // ユーザー情報の取得（直呼び出し）
+      fetchUserData() {
+        google.script.run
+          .withFailureHandler(() => { this.isReady = true; })
+          .withSuccessHandler(res => {
+            this.email = res.email;
+            if (res.lastAction) {
+              this.lastAction = {
+                time: res.lastAction.timestamp,
+                status: res.lastAction.status === "IN" ? "入室" : "退室"
+              };
+              this.isIn = (res.lastAction.status === "IN");
+            }
+            this.checkAdmin();
+          })
+          .getStatusOfActiveUser();
+      },
+
+      // 管理者判定（直呼び出し）
+      checkAdmin() {
+        google.script.run
+          .withSuccessHandler(res => {
+            this.isAdmin = res;
+            this.isReady = true; // すべてのデータが揃ってから表示
+          })
+          .isAdmin();
+      },
+
+      // パスワード認証を挟んだ打刻処理
+      async send(status) {
+        let password = null;
+
+        // 1. 入室（IN）のときだけパスワード入力を求める
+        if (status === "IN" && requirePassword === true) {
+          const { value: typedPassword } = await Swal.fire({
+            title: 'パスワード入力',
+            text: '',
+            input: 'password',
+            inputAttributes: {
+              maxlength: '4',
+              inputmode: 'numeric',
+              pattern: '[0-9]*',
+              style: 'text-align: center; font-size: 24px; letter-spacing: 4px;'
+            },
+            showCancelButton: true,
+            cancelButtonText: 'キャンセル',
+            confirmButtonText: '次へ',
+            inputValidator: (value) => {
+              if (!value || value.length !== 4 || isNaN(value)) {
+                return '4桁の数字を入力してください';
+              }
+            }
+          });
+
+          // キャンセルされた場合は処理終了
+          if (!typedPassword) return;
+          password = typedPassword;
+        }
+
+        // 2. 処理中ローディング表示
+        Swal.fire({
+          title: '処理中...',
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        // 3. パスワード検証 ＆ 打刻リクエスト（直呼び出しのチェーン構成）
+        const runner = google.script.run
+          .withFailureHandler(e => {
+            Swal.fire("エラー", "通信に失敗しました: " + e, "error");
+          })
+          .withSuccessHandler(res => {
+            // セッション切れのハンドリング
+            if (res === null) {
+              this.isSessionExpired = true;
+              Swal.close();
+              return;
+            }
+            
+            let displayTime = "";
+
+            if (status === "IN" && requirePassword === true) {
+              // verifyPasswordAndInsert の結果オブジェクトを処理
+              if (res.success === false) {
+                Swal.fire("認証失敗", res.message || "パスワードが正しくありません。", "error");
+                return;
+              }
+              displayTime = res.timestamp;
+            } else {
+              // insertRecord の結果（直に日時文字列が返る）を処理
+              displayTime = res;
+            }
+
+            // 打刻成功時の画面反映
+            this.isIn = (status === "IN");
+            this.lastAction = {
+              time: displayTime,
+              status: status === "IN" ? "入室" : "退室"
+            };
+
+            // 完了メッセージに差し替え
+            Swal.fire({
+              title: '完了',
+              text: status === "IN" ? "入室を記録しました" : "退室を記録しました",
+              icon: 'success',
+              timer: 2000,
+              showConfirmButton: false
+            });
+          });
+
+        // 💡 状況に応じてGAS側の呼び出す関数と引数を出し分ける
+        if (status === "IN" && requirePassword === true) {
+          // verifyPasswordAndInsert(status, sessionId, inputPassword) のシグネチャに合わせる
+          runner.verifyPasswordAndInsert(status, this.sessionId, password);
+        } else {
+          // insertRecord(status, sessionId) のシグネチャに合わせる
+          runner.insertRecord(status, this.sessionId);
+        }
+      },
+
+      sendIn() { this.send("IN"); },
+      sendOut() { this.send("OUT"); },
+
+      // メニューアクション（ダッシュボード移動）
+      openDashboard() {
+        this.isMenuOpen = false;
+        google.script.run
+          .withSuccessHandler(url => {
+            window.top.location.href = url + "?p=summary";
+          })
+          .getAppUrl();
+      },
+
+      // ログアウト処理
+      logout() {
+        this.isMenuOpen = false;
+        Swal.fire({
+          title: 'ログアウトしますか？',
+          text: "Googleアカウントのログアウトページへ移動します",
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'ログアウト',
+          cancelButtonText: 'キャンセル'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            google.script.run
+              .withSuccessHandler(function(url) {
+                var logoutUrl = 'https://accounts.google.com/Logout?continue=' + 
+                                encodeURIComponent('https://accounts.google.com/ServiceLogin?continue=' + url);
+                window.top.location.href = logoutUrl;
+              })
+              .getAppUrl();
+          }
+        });
+      }
+    }
+  }).mount("#main");
+</script>

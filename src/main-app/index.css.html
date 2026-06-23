@@ -1,0 +1,87 @@
+<style>
+  // --- メイン --- 
+  // 全体のレイアウト調整 
+  #app {
+    display: flex;
+    gap: 20px; // ボタン同士の隙間 
+    justify-content: center;
+    margin-top: 50px;
+  }
+
+  // 入室ボタン (青系) 
+  .button-in {
+    font-size: 32px;
+    background-color: #4A90E2;
+    color: white;
+  }
+
+  .button-in:hover {
+    background-color: #357ABD;
+    transform: translateY(-2px); // 少し浮き上がる 
+    box-shadow: 0 6px 12px rgba(74, 144, 226, 0.3);
+  }
+
+  // 退室ボタン (緑系) 
+  .button-out {
+    font-size: 32px;
+    background-color: #2ecc71; // 鮮やかなエメラルドグリーン 
+    color: #ffffff;            // 文字は白で見やすく 
+    border: none;              // 枠線を消すとモダンになります 
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); // 軽い影で立体感を 
+    transition: all 0.3s ease; // 変化を滑らかに 
+  }
+
+  .button-out:hover {
+    background-color: #27ae60; // ホバー時は少し濃い緑に 
+    color: #ffffff;
+    transform: translateY(-2px); // 少し浮き上がる演出 
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15); // 影も強く 
+  }
+
+  // 直近の打刻 
+  .last-action {
+    margin-top: 20px;
+    font-size: 0.9rem;
+    color: #666;
+    text-align: center;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+  } 
+
+  // セッション切れ表示
+  .expired-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    padding: 20px;
+  }
+
+  .expired-card {
+    background: white;
+    padding: 40px 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
+  }
+
+  .expired-icon {
+    font-size: 50px;
+    margin-bottom: 15px;
+  }
+
+  .expired-card h2 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+  }
+
+  .expired-card p {
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 25px;
+    font-size: 0.95rem;
+  }  
+</style>
