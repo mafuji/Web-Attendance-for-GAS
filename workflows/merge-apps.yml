@@ -1,0 +1,85 @@
+name: Merge GAS Source Files
+
+on:
+  push:
+    branches:
+      - '**' # 全てのブランチへのpushをトリガー（本番時は 'main' のみに絞ることも可能）
+
+jobs:
+  merge-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 変更をリポジトリにpushするために必要
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+
+      - name: Run merge script
+        run: |
+          node << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          function mergeApp(appDir, outputFileName) {
+            const srcPath = path.join(process.cwd(), 'src', appDir);
+            if (!fs.existsSync(srcPath)) return;
+
+            const files = fs.readdirSync(srcPath);
+            let gsContent = '';
+            const htmlTemplates = {};
+
+            // 1. 各ファイルを読み込む
+            files.forEach(file => {
+              const filePath = path.join(srcPath, file);
+              if (file === 'appsscript.json' || fs.statSync(filePath).isDirectory()) return;
+
+              const content = fs.readFileSync(filePath, 'utf8');
+              if (file.endsWith('.gs')) {
+                gsContent += `\n// --- File: ${file} ---\n` + content + '\n';
+              } else if (file.endsWith('.html')) {
+                // 拡張子を除いたファイル名をキーにする
+                const key = path.basename(file, '.html');
+                htmlTemplates[key] = content;
+              }
+            });
+
+            // 2. getHtmlTemplate 内の const templates = {} を置換する
+            // テンプレートをJSON文字列化して、エスケープや改行を安全に処理
+            const jsonTemplates = JSON.stringify(htmlTemplates, null, 2);
+            const targetPattern = 'const templates = {}';
+            
+            if (gsContent.includes(targetPattern)) {
+              gsContent = gsContent.replace(targetPattern, `const templates = ${jsonTemplates}`);
+            } else {
+              console.log(`[Warning] '${targetPattern}' not found in ${appDir}`);
+            }
+
+            // 3. ルート（1層目）に書き出し
+            fs.writeFileSync(path.join(process.cwd(), outputFileName), gsContent.trim(), 'utf8');
+            console.log(`Successfully created ${outputFileName}`);
+          }
+
+          // 2つのアプリを実行
+          mergeApp('main-app', 'main-app-merged.gs');
+          mergeApp('controller-app', 'controller-app-merged.gs');
+          EOF
+
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 変更がある場合のみコミットしてpush
+          git add main-app-merged.gs controller-app-merged.gs
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: auto-generated merged GS files [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
