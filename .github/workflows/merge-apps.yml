@@ -3,13 +3,13 @@ name: Merge GAS Source Files
 on:
   push:
     branches:
-      - '**' # ‘S‚Ä‚Ìƒuƒ‰ƒ“ƒ`‚Ö‚Ìpush‚ğƒgƒŠƒK[i–{”Ô‚Í 'main' ‚Ì‚İ‚Éi‚é‚±‚Æ‚à‰Â”\j
+      - '**' # å…¨ã¦ã®ãƒ–ãƒ©ãƒ³ãƒã¸ã®pushã‚’ãƒˆãƒªã‚¬ãƒ¼ï¼ˆæœ¬ç•ªæ™‚ã¯ 'main' ã®ã¿ã«çµã‚‹ã“ã¨ã‚‚å¯èƒ½ï¼‰
 
 jobs:
   merge-and-commit:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # •ÏX‚ğƒŠƒ|ƒWƒgƒŠ‚Épush‚·‚é‚½‚ß‚É•K—v
+      contents: write # å¤‰æ›´ã‚’ãƒªãƒã‚¸ãƒˆãƒªã«pushã™ã‚‹ãŸã‚ã«å¿…è¦
 
     steps:
       - name: Checkout repository
@@ -28,29 +28,46 @@ jobs:
 
           function mergeApp(appDir, outputFileName) {
             const srcPath = path.join(process.cwd(), 'src', appDir);
+            // å‡ºåŠ›å…ˆã‚’ã€Œprd/ã‚¢ãƒ—ãƒªåã€ã®ãƒ•ã‚©ãƒ«ãƒ€ã«è¨­å®š
+            const prdPath = path.join(process.cwd(), 'prd', appDir);
+
             if (!fs.existsSync(srcPath)) return;
+
+            // prd/ã‚¢ãƒ—ãƒªå ãƒ•ã‚©ãƒ«ãƒ€ãŒãªã‘ã‚Œã°äº‹å‰ã«ä½œæˆ
+            if (!fs.existsSync(prdPath)) {
+              fs.mkdirSync(prdPath, { recursive: true });
+            }
 
             const files = fs.readdirSync(srcPath);
             let gsContent = '';
             const htmlTemplates = {};
 
-            // 1. Šeƒtƒ@ƒCƒ‹‚ğ“Ç‚İ‚Ş
+            // 1. å„ãƒ•ã‚¡ã‚¤ãƒ«ã‚’èª­ã¿è¾¼ã‚€
             files.forEach(file => {
               const filePath = path.join(srcPath, file);
-              if (file === 'appsscript.json' || fs.statSync(filePath).isDirectory()) return;
+              
+              // appsscript.json ã®å ´åˆã¯ prd å´ã®ãƒ•ã‚©ãƒ«ãƒ€ã«ãã®ã¾ã¾ã‚³ãƒ”ãƒ¼ã—ã¦åŒæœŸ
+              if (file === 'appsscript.json') {
+                const destConfigPath = path.join(prdPath, 'appsscript.json');
+                fs.copyFileSync(filePath, destConfigPath);
+                console.log(`Copied appsscript.json to ${prdPath}`);
+                return;
+              }
+
+              if (fs.statSync(filePath).isDirectory()) return;
 
               const content = fs.readFileSync(filePath, 'utf8');
               if (file.endsWith('.js')) {
                 gsContent += `\n// --- File: ${file} ---\n` + content + '\n';
               } else if (file.endsWith('.html')) {
-                // Šg’£q‚ğœ‚¢‚½ƒtƒ@ƒCƒ‹–¼‚ğƒL[‚É‚·‚é
+                // æ‹¡å¼µå­ã‚’é™¤ã„ãŸãƒ•ã‚¡ã‚¤ãƒ«åã‚’ã‚­ãƒ¼ã«ã™ã‚‹
                 const key = path.basename(file, '.html');
                 htmlTemplates[key] = content;
               }
             });
 
-            // 2. getHtmlTemplate “à‚Ì const templates = {} ‚ğ’uŠ·‚·‚é
-            // ƒeƒ“ƒvƒŒ[ƒg‚ğJSON•¶š—ñ‰»‚µ‚ÄAƒGƒXƒP[ƒv‚â‰üs‚ğˆÀ‘S‚Éˆ—
+            // 2. getHtmlTemplate å†…ã® const templates = {} ã‚’ç½®æ›ã™ã‚‹
+            // ãƒ†ãƒ³ãƒ—ãƒ¬ãƒ¼ãƒˆã‚’JSONæ–‡å­—åˆ—åŒ–ã—ã¦ã€ã‚¨ã‚¹ã‚±ãƒ¼ãƒ—ã‚„æ”¹è¡Œã‚’å®‰å…¨ã«å‡¦ç†
             const jsonTemplates = JSON.stringify(htmlTemplates, null, 2);
             const targetPattern = 'const templates = {}';
             
@@ -60,12 +77,13 @@ jobs:
               console.log(`[Warning] '${targetPattern}' not found in ${appDir}`);
             }
 
-            // 3. ƒ‹[ƒgi1‘w–Új‚É‘‚«o‚µ
-            fs.writeFileSync(path.join(process.cwd(), outputFileName), gsContent.trim(), 'utf8');
-            console.log(`Successfully created ${outputFileName}`);
+            // 3. æŒ‡å®šã•ã‚ŒãŸ prd å†…ã®ãƒ•ã‚©ãƒ«ãƒ€ã«æ›¸ãå‡ºã—
+            const outputPath = path.join(prdPath, outputFileName);
+            fs.writeFileSync(outputPath, gsContent.trim(), 'utf8');
+            console.log(`Successfully created ${outputPath}`);
           }
 
-          // 2‚Â‚ÌƒAƒvƒŠ‚ğÀs
+          // 2ã¤ã®ã‚¢ãƒ—ãƒªã‚’å®Ÿè¡Œï¼ˆå‡ºåŠ›å…ˆãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã¯é–¢æ•°å†…ã§è‡ªå‹•å‡¦ç†ã•ã‚Œã¾ã™ï¼‰
           mergeApp('main-app', 'main-app-merged.js');
           mergeApp('controller-app', 'controller-app-merged.js');
           EOF
@@ -75,10 +93,12 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          git add main-app-merged.js controller-app-merged.js
+          # prdãƒ•ã‚©ãƒ«ãƒ€å…¨ä½“ã®å¤‰æ›´ã‚’ã‚¹ãƒ†ãƒ¼ã‚¸ãƒ³ã‚°ã«å¯¾è±¡å¤‰æ›´
+          git add prd/
+          
           if ! git diff --cached --quiet; then
-            git commit -m "chore: auto-generated merged GS files [skip ci]"
-            # ?? ${GITHUB_REF_NAME} ‚ğg‚¤‚±‚Æ‚ÅAŒ»İPush‚³‚ê‚½ƒuƒ‰ƒ“ƒ`idev‚È‚Çj‚É©“®‚ÅPush‚³‚ê‚Ü‚·
+            git commit -m "chore: auto-generated merged GS and config files [skip ci]"
+            # ${GITHUB_REF_NAME} ã‚’ä½¿ã†ã“ã¨ã§ã€ç¾åœ¨Pushã•ã‚ŒãŸãƒ–ãƒ©ãƒ³ãƒï¼ˆdevãªã©ï¼‰ã«è‡ªå‹•ã§Pushã•ã‚Œã¾ã™
             git push origin ${GITHUB_REF_NAME}
           else
             echo "No changes to commit"
