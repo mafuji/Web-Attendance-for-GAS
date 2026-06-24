@@ -164,19 +164,15 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
       );
     }
     
-    // ③ appsscript.json (マニフェスト) のGitHub同期＆公開範囲調整
+// ③ appsscript.json (マニフェスト) をGitHubの内容でそのまま完全同期
     if (file.name === "appsscript") {
       try {
-        // 💡 GitHub側から引っ張ってきた最新の設定ファイル（newManifest）をベースに適用
-        let manifestObj = JSON.parse(newManifest);
-        
-        if (manifestObj.webapp) {
-          manifestObj.webapp.executeAs = "USER_DEPLOYING";
-          manifestObj.webapp.access = "ANYONE";
-        }
-        file.source = JSON.stringify(manifestObj, null, 2);
+        // JSONとして正しくパースできるか最低限のチェックだけして、そのまま文字列として注入
+        JSON.parse(newManifest); 
+        file.source = newManifest;
+        Logger.log("--- [マニフェスト同期] GitHub上のappsscript.jsonをそのまま適用しました ---");
       } catch (e) {
-        Logger.log("マニフェストファイルの自動書き換え中にエラーが発生しました: " + e.toString());
+        Logger.log("⚠️ GitHubから取得したマニフェストファイルが不正なJSON形式のため、同期をスキップしました: " + e.toString());
       }
     }
     return file;

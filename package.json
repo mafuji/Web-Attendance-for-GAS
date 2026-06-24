@@ -5,16 +5,16 @@
   "main": "index.js",
   "scripts": {
     "// --- main-app の4パターン ---": "",
-    "clasp:prd:main:dev:push": "cd prd/main-app; Copy-Item .clasp-dev.json .clasp.json -Force; clasp push",
-    "clasp:prd:main:dev:pull": "cd prd/main-app; Copy-Item .clasp-dev.json .clasp.json -Force; clasp pull",
-    "clasp:prd:main:prd:push": "cd prd/main-app; Copy-Item .clasp-prod.json .clasp.json -Force; clasp push",
-    "clasp:prd:main:prd:pull": "cd prd/main-app; Copy-Item .clasp-prod.json .clasp.json -Force; clasp pull",
+    "clasp:prd:main:dev:push": "cd ./prd/main-app; Copy-Item ./.clasp-dev.json ./.clasp.json -Force; clasp push; cd ../..",
+    "clasp:prd:main:dev:pull": "cd ./prd/main-app; Copy-Item ./.clasp-dev.json ./.clasp.json -Force; clasp pull; cd ../..",
+    "clasp:prd:main:prd:push": "cd ./prd/main-app; Copy-Item ./.clasp-prod.json ./.clasp.json -Force; clasp push; cd ../..",
+    "clasp:prd:main:prd:pull": "cd ./prd/main-app; Copy-Item ./.clasp-prod.json ./.clasp.json -Force; clasp pull; cd ../..",
 
     "// --- controller-app の4パターン ---": "",
-    "clasp:prd:ctrl:dev:push": "cd prd/controller-app; Copy-Item .clasp-dev.json .clasp.json -Force; clasp push",
-    "clasp:prd:ctrl:dev:pull": "cd prd/controller-app; Copy-Item .clasp-dev.json .clasp.json -Force; clasp pull",
-    "clasp:prd:ctrl:prd:push": "cd prd/controller-app; Copy-Item .clasp-prod.json .clasp.json -Force; clasp push",
-    "clasp:prd:ctrl:prd:pull": "cd prd/controller-app; Copy-Item .clasp-prod.json .clasp.json -Force; clasp pull"
+    "clasp:prd:ctrl:dev:push": "cd ./prd/controller-app; Copy-Item ./.clasp-dev.json ./.clasp.json -Force; clasp push; cd ../..",
+    "clasp:prd:ctrl:dev:pull": "cd ./prd/controller-app; Copy-Item ./.clasp-dev.json ./.clasp.json -Force; clasp pull; cd ../..",
+    "clasp:prd:ctrl:prd:push": "cd ./prd/controller-app; Copy-Item ./.clasp-prod.json ./.clasp.json -Force; clasp push; cd ../..",
+    "clasp:prd:ctrl:prd:pull": "cd ./prd/controller-app; Copy-Item ./.clasp-prod.json ./.clasp.json -Force; clasp pull; cd ../.."
   },
   "keywords": [],
   "author": "",
