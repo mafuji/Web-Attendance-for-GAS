@@ -95,12 +95,12 @@ function getLatestPassword() {
  * ============================================================================
  * 【約束事1】アプリ固有のカスタムメニュー構成を返す
  * ============================================================================
- * ?? シンプルトリガー制限を回避するため、内部での ScriptApp 呼び出しを撤廃！
+ * シンプルトリガー制限を回避するため、内部での ScriptApp 呼び出しを撤廃！
  */
 function getAppMenuConfig() {
   return [
     // 表示を固定のシンプルな文言にします
-    { type: "item", name: "?? パスワード自動更新のON / OFFを切り替える", functionName: "main_toggleTrigger" }
+    { type: "item", name: "✅ パスワード自動更新のON / OFFを切り替える", functionName: "main_toggleTrigger" }
   ];
 }
 
@@ -112,9 +112,9 @@ function getAppMenuConfig() {
 function getAppTriggerConfig() {
   return [
     { 
-      // ?? 実行したい関数名
+      // 実行したい関数名
       functionName: "rotatePassword", 
-      // ?? GASの本物のメソッド名と引数をそのまま配列で指定！
+      // GASの本物のメソッド名と引数をそのまま配列で指定！
       methods: [
         { name: "everyMinutes", args: [1] }
       ]
@@ -130,7 +130,7 @@ function getAppTriggerConfig() {
 
 /**
  * トリガーのON/OFFを切り替えるカスタムメニュー関数
- * ?? ユーザーがボタンを「クリックした」後は、すべての権限が使える（シンプルトリガーではない）ため、
+ * ユーザーがボタンを「クリックした」後は、すべての権限が使える（シンプルトリガーではない）ため、
  * ここで ScriptApp を使うのは100%安全です。
  */
 function main_toggleTrigger() {
@@ -139,11 +139,11 @@ function main_toggleTrigger() {
   if (isAppTriggerRunning()) {
     // 稼働中なら止める
     deleteAppTriggerOnly();
-    ui.alert('定期処理の停止', '?? パスワードの自動更新を停止しました。', ui.ButtonSet.OK);
+    ui.alert('定期処理の停止', '🛑 パスワードの自動更新を停止しました。', ui.ButtonSet.OK);
   } else {
     // 停止中なら動かす
     createAppTriggerOnly();
-    ui.alert('定期処理の開始', '?? パスワードの自動更新を開始しました。\n今後1分おきに自動実行されます。', ui.ButtonSet.OK);
+    ui.alert('定期処理の開始', '✅ パスワードの自動更新を開始しました。\n今後1分おきに自動実行されます。', ui.ButtonSet.OK);
   }
 }
 

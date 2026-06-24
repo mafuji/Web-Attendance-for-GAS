@@ -443,7 +443,7 @@ function getSummaryData(startStr, endStr) {
  * ============================================================================
  */
 function getAppMenuConfig() {
-  // ?? 現時点ではメニューなし（将来追加したくなったらこの配列の中にオブジェクトを増やす）
+  // 現時点ではメニューなし（将来追加したくなったらこの配列の中にオブジェクトを増やす）
   return [
     // 例: { type: "item", name: "? 新機能の実行", functionName: "app_newFeature" }
   ];
@@ -457,9 +457,9 @@ function getAppMenuConfig() {
 function getAppTriggerConfig() {
   return [
     { 
-      // ?? 実行したい関数名
+      // 実行したい関数名
       functionName: "deleteExpiredSessions", 
-      // ?? GASの本物のメソッド名と引数をそのまま配列で指定！
+      // GASの本物のメソッド名と引数をそのまま配列で指定！
       methods: [
         { name: "everyMinutes", args: [1] }
       ]
