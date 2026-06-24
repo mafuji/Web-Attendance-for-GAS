@@ -10,7 +10,7 @@ const CURRENT_VERSION = "v1.0.0-beta.3"; // アップデート後にここも自
 // ==========================================
 // 💡 prdフォルダ内の階層構造に合わせて、ディレクトリ名も含めて指定します
 const TARGET_APP_DIR = "main-app"; // controller-app の場合はここを書き換える
-const TARGET_FILE = "main-app-merged.js"; // controller-app-merged.js の場合はここを書き換える
+const TARGET_FILE = "merged.js";
 
 /**
  * アップデートチェック＆実行のメイン関数
@@ -144,16 +144,16 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   }
   
   const projectContent = JSON.parse(getResponse.getContentText());
-  let mainFileExists = false;
+  let mergedFileExists = false;
   
   // ====================================================
   // 2. 各ファイルの書き換え処理（JSおよびappsscript.jsonの反映）
   // ====================================================
   projectContent.files = projectContent.files.map(file => {
-    // ① main.js の上書き
-    if (file.name === "main") {
+    // ① merged.js の上書き
+    if (file.name === "merged") {
       file.source = newCode;
-      mainFileExists = true;
+      mergedFileExists = true;
     }
     
     // ② updater.js の CURRENT_VERSION の書き換え
@@ -172,14 +172,7 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
         
         if (manifestObj.webapp) {
           manifestObj.webapp.executeAs = "USER_DEPLOYING";
-          
-          if (envMode === "development") {
-            Logger.log("--- [マニフェスト調整] 開発環境用に公開範囲を ANYONE に設定します ---");
-            manifestObj.webapp.access = "ANYONE";
-          } else {
-            Logger.log("--- [マニフェスト調整] 本番環境用に公開範囲を DOMAIN に設定します ---");
-            manifestObj.webapp.access = "DOMAIN";
-          }
+          manifestObj.webapp.access = "ANYONE";
         }
         file.source = JSON.stringify(manifestObj, null, 2);
       } catch (e) {
@@ -189,9 +182,9 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
     return file;
   });
   
-  if (!mainFileExists) {
+  if (!mergedFileExists) {
     projectContent.files.push({
-      name: "main",
+      name: "merged",
       type: "SERVER_JS",
       source: newCode
     });
@@ -240,10 +233,10 @@ function onOpen() {
   const menu = ui.createMenu('アプリメニュー');
 
   // ----------------------------------------------------
-  // 1. 【メイン処理】main.gs 側からメニューデータを吸い上げて合流
+  // 1. 【メイン処理】merged.gs 側からメニューデータを吸い上げて合流
   // ----------------------------------------------------
   try {
-    // main.gs 側に、約束の関数「getAppMenuConfig」が存在するか確認
+    // merged.gs 側に、約束の関数「getAppMenuConfig」が存在するか確認
     if (typeof getAppMenuConfig === 'function') {
       const appMenus = getAppMenuConfig();
       
@@ -259,7 +252,7 @@ function onOpen() {
       }
     }
   } catch (e) {
-    // 💡 万が一 main 側が壊れていて吸い出しに失敗しても、ログに留めて処理を続行！
+    // 💡 万が一 merged 側が壊れていて吸い出しに失敗しても、ログに留めて処理を続行！
     Logger.log("⚠️ アプリ固有メニューの取得に失敗しました: " + e.toString());
   }
 
@@ -390,7 +383,7 @@ function menu_setupInitialDeploymentAndTriggers() {
       Logger.log("🟢 自動更新トリガー（毎日深夜3時）を設置しました。");
     }
 
-    // ② main.gs側からアプリ固有のトリガー設定を吸い上げて動的作成
+    // ② merged.gs側からアプリ固有のトリガー設定を吸い上げて動的作成
     if (typeof getAppTriggerConfig === 'function') {
       const appTriggers = getAppTriggerConfig();
       
@@ -404,7 +397,7 @@ function menu_setupInitialDeploymentAndTriggers() {
             // 1. まずベースとなるタイムベースドトリガーの原型を作る
             let builder = ScriptApp.newTrigger(config.functionName).timeBased();
             
-            // 2. main側から指定されたメソッド（everyMinutes等）を動的に数珠つなぎで実行する
+            // 2. merged側から指定されたメソッド（everyMinutes等）を動的に数珠つなぎで実行する
             config.methods.forEach(method => {
               if (typeof builder[method.name] === 'function') {
                 // 💡 例： builder["everyMinutes"].apply(builder, [1]) と同義になり、GASのメソッドが動的に発火します
@@ -628,7 +621,7 @@ function menu_checkCurrentDeploymentStatus() {
     const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
     triggerInfoText += hasUpdateTrigger ? "・🔄 自動更新システム: 🟢 稼働中（毎日深夜）\n" : "・🔄 自動更新システム: 🛑 停止中\n";
     
-    // main側からトリガー設定が取得できれば、それらも稼働しているかチェック
+    // merged側からトリガー設定が取得できれば、それらも稼働しているかチェック
     if (typeof getAppTriggerConfig === 'function') {
       const appTriggers = getAppTriggerConfig();
       if (Array.isArray(appTriggers)) {
