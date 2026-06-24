@@ -154,10 +154,10 @@ function generateSessionId() {
 
   console.log(`User: ${userEmail} のセッションを更新しました。ID: ${sessionId}`);
 
-  // 💡 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
+  // 　 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
   SpreadsheetApp.flush(); 
 
-  return sessionId; // 💡 生成したIDを返す  
+  return sessionId; // 　 生成したIDを返す  
 }
 
 // セッションの有効性チェック
@@ -233,7 +233,7 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
     return null;
   }
 
-  // 2. 💡 パスコードはActiveSpreadsheet内のConfigシートを参照
+  // 2. 　 パスコードはActiveSpreadsheet内のConfigシートを参照
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Config");
   
@@ -254,7 +254,7 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
     };
   }
 
-  // 4. 💡 パスコードが一致していたら、元の insertRecord を呼び出す
+  // 4. 　 パスコードが一致していたら、元の insertRecord を呼び出す
   try {
     const formattedTime = insertRecord(status, sessionId);
     
@@ -434,46 +434,37 @@ function getSummaryData(startStr, endStr) {
 }
 
 //================================================================================
-// トリガー用
+// カスタムメニュー・トリガー用
 //================================================================================
 
-// トリガーを設定する
-function createTrigger() {
-  // クリア
-  const triggers = ScriptApp.getProjectTriggers();
-  
-  for (let i = 0; i < triggers.length; i++) {
-    ScriptApp.deleteTrigger(triggers[i]);
-  }  
-  // 新規作成
-  ScriptApp.newTrigger('triggerHub')
-    .timeBased()
-    .everyMinutes(1)
-    .create();
+/**
+ * ============================================================================
+ * 【約束事1】アプリ固有のカスタムメニュー構成を返す
+ * ============================================================================
+ */
+function getAppMenuConfig() {
+  // ?? 現時点ではメニューなし（将来追加したくなったらこの配列の中にオブジェクトを増やす）
+  return [
+    // 例: { type: "item", name: "? 新機能の実行", functionName: "app_newFeature" }
+  ];
 }
 
-// 複数の処理を1つのトリガーにまとめる
-function triggerHub() {
-  const now = new Date();
-  const min = now.getMinutes();
-  const hour = now.getHours();
-  const date = now.getDate();
-
-  // Controllerシートから期限切れのセッション情報を削除する（毎分）
-  try {
-    deleteExpiredSessions(); 
-  } catch(e) {
-    console.error("エラー:deleteExpiredSessions:", e);
-  }
-
-  // タスク追加例：毎日夜の23:00に実行
-  // if (hour === 23 && min === 0) {
-  //   try {
-  //     autoBackUpLogSheet(); // ライブラリ側で関数を増やす
-  //   } catch(e) {
-  //     console.error(e);
-  //   }
-  // }
+/**
+ * ============================================================================
+ * 【約束事2】「アプリを公開する」ボタンを押したときに自動作成するトリガー
+ * ============================================================================
+ */
+function getAppTriggerConfig() {
+  return [
+    { 
+      // ?? 実行したい関数名
+      functionName: "deleteExpiredSessions", 
+      // ?? GASの本物のメソッド名と引数をそのまま配列で指定！
+      methods: [
+        { name: "everyMinutes", args: [1] }
+      ]
+    }
+  ];
 }
 
 // Controllerシートから期限切れのセッション情報を削除する
@@ -482,7 +473,7 @@ function deleteExpiredSessions() {
   const sheet = ss.getSheetByName('Controller');
 
   const lastRow = sheet.getLastRow();
-  // 💡 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
+  // 　 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
   if (lastRow < 2) return;
 
   const lastColumn = sheet.getLastColumn();
@@ -492,7 +483,7 @@ function deleteExpiredSessions() {
   const now = new Date().getTime();
   const DATE_COL_INDEX = 2; // C列 (0始まりで2)
 
-  // 💡 生き残るデータ（期限内データ）だけを格納する配列
+  // 　 生き残るデータ（期限内データ）だけを格納する配列
   const keepRows = [header]; 
 
   // 2行目（インデックス1）以降をチェック
@@ -508,13 +499,13 @@ function deleteExpiredSessions() {
 
     const expiredAt = new Date(rawCell).getTime();
 
-    // 💡 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
+    // 　 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
     if (expiredAt >= now) {
       keepRows.push(row);
     }
   }
 
-  // 💡 データに変化（削除対象）があった場合のみシートを更新
+  // 　 データに変化（削除対象）があった場合のみシートを更新
   if (keepRows.length < values.length) {
     // 1. 一旦シートのデータ部分をすべてクリア
     sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
