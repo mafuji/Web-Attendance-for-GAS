@@ -75,11 +75,11 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 変更がある場合のみコミットしてpush
           git add main-app-merged.js controller-app-merged.js
           if ! git diff --cached --quiet; then
             git commit -m "chore: auto-generated merged GS files [skip ci]"
-            git push
+            # ?? ${GITHUB_REF_NAME} を使うことで、現在Pushされたブランチ（devなど）に自動でPushされます
+            git push origin ${GITHUB_REF_NAME}
           else
             echo "No changes to commit"
           fi
