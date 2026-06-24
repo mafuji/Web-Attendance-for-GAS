@@ -83,9 +83,9 @@ jobs:
             console.log(`Successfully created ${outputPath}`);
           }
 
-          // 2つのアプリを実行（出力先ディレクトリは関数内で自動処理されます）
-          mergeApp('main-app', 'main-app-merged.js');
-          mergeApp('controller-app', 'controller-app-merged.js');
+          // 2つのアプリを実行（出力先ディレクトリは関数内で自動処理）
+          mergeApp('main-app', 'merged.js');
+          mergeApp('controller-app', 'merged.js');
           EOF
 
       - name: Commit and Push changes
