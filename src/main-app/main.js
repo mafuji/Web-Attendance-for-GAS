@@ -1,3 +1,5 @@
+// updaterテスト v1.0.0-beta.2
+
 function doGet(e) {
   // クエリパラメータでサイト出し分け
   const page = e.parameter.p; // URLパラメータ "p" を取得
@@ -153,10 +155,10 @@ function generateSessionId() {
 
   console.log(`User: ${userEmail} のセッションを更新しました。ID: ${sessionId}`);
 
-  // 💡 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
+  // 　 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
   SpreadsheetApp.flush(); 
 
-  return sessionId; // 💡 生成したIDを返す  
+  return sessionId; // 　 生成したIDを返す  
 }
 
 // セッションの有効性チェック
@@ -232,7 +234,7 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
     return null;
   }
 
-  // 2. 💡 パスコードはActiveSpreadsheet内のConfigシートを参照
+  // 2. 　 パスコードはActiveSpreadsheet内のConfigシートを参照
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Config");
   
@@ -253,7 +255,7 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
     };
   }
 
-  // 4. 💡 パスコードが一致していたら、元の insertRecord を呼び出す
+  // 4. 　 パスコードが一致していたら、元の insertRecord を呼び出す
   try {
     const formattedTime = insertRecord(status, sessionId);
     
@@ -481,7 +483,7 @@ function deleteExpiredSessions() {
   const sheet = ss.getSheetByName('Controller');
 
   const lastRow = sheet.getLastRow();
-  // 💡 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
+  // 　 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
   if (lastRow < 2) return;
 
   const lastColumn = sheet.getLastColumn();
@@ -491,7 +493,7 @@ function deleteExpiredSessions() {
   const now = new Date().getTime();
   const DATE_COL_INDEX = 2; // C列 (0始まりで2)
 
-  // 💡 生き残るデータ（期限内データ）だけを格納する配列
+  // 　 生き残るデータ（期限内データ）だけを格納する配列
   const keepRows = [header]; 
 
   // 2行目（インデックス1）以降をチェック
@@ -507,13 +509,13 @@ function deleteExpiredSessions() {
 
     const expiredAt = new Date(rawCell).getTime();
 
-    // 💡 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
+    // 　 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
     if (expiredAt >= now) {
       keepRows.push(row);
     }
   }
 
-  // 💡 データに変化（削除対象）があった場合のみシートを更新
+  // 　 データに変化（削除対象）があった場合のみシートを更新
   if (keepRows.length < values.length) {
     // 1. 一旦シートのデータ部分をすべてクリア
     sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();

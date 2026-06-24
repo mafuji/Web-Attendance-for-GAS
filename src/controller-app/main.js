@@ -1,3 +1,5 @@
+// updaterテスト v1.0.0-beta.1
+
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const menu = ui.createMenu('管理メニュー');
