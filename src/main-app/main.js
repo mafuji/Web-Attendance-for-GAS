@@ -1,5 +1,3 @@
-// updaterテスト v1.0.0-beta.2
-
 function doGet(e) {
   // クエリパラメータでサイト出し分け
   const page = e.parameter.p; // URLパラメータ "p" を取得
@@ -435,46 +433,37 @@ function getSummaryData(startStr, endStr) {
 }
 
 //================================================================================
-// トリガー用
+// カスタムメニュー・トリガー用
 //================================================================================
 
-// トリガーを設定する
-function createTrigger() {
-  // クリア
-  const triggers = ScriptApp.getProjectTriggers();
-  
-  for (let i = 0; i < triggers.length; i++) {
-    ScriptApp.deleteTrigger(triggers[i]);
-  }  
-  // 新規作成
-  ScriptApp.newTrigger('triggerHub')
-    .timeBased()
-    .everyMinutes(1)
-    .create();
+/**
+ * ============================================================================
+ * 【約束事1】アプリ固有のカスタムメニュー構成を返す
+ * ============================================================================
+ */
+function getAppMenuConfig() {
+  // ?? 現時点ではメニューなし（将来追加したくなったらこの配列の中にオブジェクトを増やす）
+  return [
+    // 例: { type: "item", name: "? 新機能の実行", functionName: "app_newFeature" }
+  ];
 }
 
-// 複数の処理を1つのトリガーにまとめる
-function triggerHub() {
-  const now = new Date();
-  const min = now.getMinutes();
-  const hour = now.getHours();
-  const date = now.getDate();
-
-  // Controllerシートから期限切れのセッション情報を削除する（毎分）
-  try {
-    deleteExpiredSessions(); 
-  } catch(e) {
-    console.error("エラー:deleteExpiredSessions:", e);
-  }
-
-  // タスク追加例：毎日夜の23:00に実行
-  // if (hour === 23 && min === 0) {
-  //   try {
-  //     autoBackUpLogSheet(); // ライブラリ側で関数を増やす
-  //   } catch(e) {
-  //     console.error(e);
-  //   }
-  // }
+/**
+ * ============================================================================
+ * 【約束事2】「アプリを公開する」ボタンを押したときに自動作成するトリガー
+ * ============================================================================
+ */
+function getAppTriggerConfig() {
+  return [
+    { 
+      // ?? 実行したい関数名
+      functionName: "deleteExpiredSessions", 
+      // ?? GASの本物のメソッド名と引数をそのまま配列で指定！
+      methods: [
+        { name: "everyMinutes", args: [1] }
+      ]
+    }
+  ];
 }
 
 // Controllerシートから期限切れのセッション情報を削除する
