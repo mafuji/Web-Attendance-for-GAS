@@ -6,9 +6,9 @@ const GITHUB_REPO = "Web-Attendance-for-GAS";
 const CURRENT_VERSION = "v1.0.0-beta.3"; // アップデート後にここも自動で書き換わります
 
 // ==========================================
-// アプリごとの固有設定（※アプリに応じて書き換える）
+// アプリごとの固有設定
 // ==========================================
-const TARGET_APP_DIR = "controller-app"; // controller-app の場合はここを書き換える
+const TARGET_APP_DIR = "controller-app"; // アプリごとに書き換えて複製する
 const TARGET_FILE = "merged.js";
 
 /**
