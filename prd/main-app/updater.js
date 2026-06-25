@@ -380,7 +380,9 @@ function onOpen() {
       .addItem('🚀 アプリを公開する', 'menu_setupInitialDeploymentAndTriggers')
       .addItem('📄 現在の公開状況を確認する', 'menu_checkCurrentDeploymentStatus')
       .addSeparator()
-      .addItem('🔄 修正パッチを適用する', 'menu_forceExecuteUpdate')
+      .addItem('🔄 アプリを更新する', 'menu_forceExecuteUpdate')
+      .addItem('▶️ アプリの自動更新を開始する', 'menu_startAutoUpdateTrigger')
+      .addItem('⏸️ アプリの自動更新を一時停止する', 'menu_stopAutoUpdateTrigger')
       .addSeparator()
       .addItem('🛑 アプリの公開を停止する', 'menu_terminateSystem')
   );
@@ -588,5 +590,55 @@ function menu_checkCurrentDeploymentStatus() {
 
   } catch (e) {
     ui.alert('❌ 状況確認失敗', 'エラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * システム管理：毎晩の自動更新トリガーを設置（開始）する
+ */
+function menu_startAutoUpdateTrigger() {
+  const ui = SpreadsheetApp.getUi();
+  const allTriggers = ScriptApp.getProjectTriggers();
+  
+  // 重複チェック
+  const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
+  
+  if (hasUpdateTrigger) {
+    ui.alert('確認', '🔄 毎晩の自動更新トリガーは、すでに「稼働中」です。', ui.ButtonSet.OK);
+    return;
+  }
+  
+  // トリガー新規作成
+  ScriptApp.newTrigger('checkAndExecuteUpdate')
+    .timeBased()
+    .everyDays(1)
+    .atHour(3) // 深夜3時〜4時の間に発火
+    .create();
+    
+  showToast('自動更新トリガーを設置しました。', '▶️ 稼働開始');
+  ui.alert('稼働開始', '🟢 毎晩深夜3時の自動更新システムを有効化しました。', ui.ButtonSet.OK);
+}
+
+/**
+ * システム管理：毎晩の自動更新トリガーを削除（一時停止）する
+ */
+function menu_stopAutoUpdateTrigger() {
+  const ui = SpreadsheetApp.getUi();
+  const allTriggers = ScriptApp.getProjectTriggers();
+  let deleted = false;
+  
+  // checkAndExecuteUpdate のトリガーだけを狙い撃ちして削除
+  allTriggers.forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'checkAndExecuteUpdate') {
+      ScriptApp.deleteTrigger(trigger);
+      deleted = true;
+    }
+  });
+  
+  if (deleted) {
+    showToast('自動更新トリガーを削除しました。', '⏸️ 一時停止');
+    ui.alert('一時停止完了', '⏸️ 毎晩の自動更新を一時停止しました。\n（※ユーザーのアプリ利用や、手動でのアップデート機能はそのまま使えます）', ui.ButtonSet.OK);
+  } else {
+    ui.alert('確認', '🛑 自動更新トリガーはすでに停止しているか、設置されていません。', ui.ButtonSet.OK);
   }
 }
