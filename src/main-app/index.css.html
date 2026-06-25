@@ -1,14 +1,15 @@
 <style>
-  // --- メイン --- 
-  // 全体のレイアウト調整 
+  /* --- メイン --- */
+  /* 全体のレイアウト調整 */
   #app {
     display: flex;
-    gap: 20px; // ボタン同士の隙間 
-    justify-content: center;
+    flex-direction: column; /* ユーザー情報とボタンを「縦並び」にする */
+    align-items: center;    /* 中央寄せ */
     margin-top: 50px;
+    gap: 25px;              /* ユーザー情報とボタンの間の隙間 */
   }
 
-  // 入室ボタン (青系) 
+  /* 入室ボタン (青系) */
   .button-in {
     font-size: 32px;
     background-color: #4A90E2;
@@ -17,28 +18,28 @@
 
   .button-in:hover {
     background-color: #357ABD;
-    transform: translateY(-2px); // 少し浮き上がる 
+    transform: translateY(-2px); /* 少し浮き上がる */
     box-shadow: 0 6px 12px rgba(74, 144, 226, 0.3);
   }
 
-  // 退室ボタン (緑系) 
+  /* 退室ボタン (緑系) */
   .button-out {
     font-size: 32px;
-    background-color: #2ecc71; // 鮮やかなエメラルドグリーン 
-    color: #ffffff;            // 文字は白で見やすく 
-    border: none;              // 枠線を消すとモダンになります 
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); // 軽い影で立体感を 
-    transition: all 0.3s ease; // 変化を滑らかに 
+    background-color: #2ecc71; /* 鮮やかなエメラルドグリーン */
+    color: #ffffff;            /* 文字は白で見やすく */
+    border: none;              /* 枠線を消すとモダンになります */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* 軽い影で立体感を */
+    transition: all 0.3s ease; /* 変化を滑らかに */
   }
 
   .button-out:hover {
-    background-color: #27ae60; // ホバー時は少し濃い緑に 
+    background-color: #27ae60; /* ホバー時は少し濃い緑に */
     color: #ffffff;
-    transform: translateY(-2px); // 少し浮き上がる演出 
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15); // 影も強く 
+    transform: translateY(-2px); /* 少し浮き上がる演出 */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15); /* 影も強く */
   }
 
-  // 直近の打刻 
+  /* 直近の打刻 */
   .last-action {
     margin-top: 20px;
     font-size: 0.9rem;
@@ -48,7 +49,7 @@
     padding-top: 10px;
   } 
 
-  // セッション切れ表示
+  /* セッション切れ表示 */
   .expired-container {
     display: flex;
     justify-content: center;
@@ -84,4 +85,50 @@
     margin-bottom: 25px;
     font-size: 0.95rem;
   }  
+
+  /* ボタン配置エリア（元々の#appの横並びをここに移植） */
+  .button-area {
+    display: flex;
+    gap: 20px;              /* ボタン同士の隙間 */
+    justify-content: center;
+  }
+
+  /* --- かっこいいユーザー情報ボックス --- */
+  .user-info-box {
+    display: flex;
+    flex-direction: column; /* ラベルとメアドを縦並びに */
+    align-items: center;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    padding: 16px 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); /* 既存のカードに合わせた軽い影 */
+    border: 1px solid #e9ecef;
+    max-width: 90%;
+    transition: all 0.3s ease;
+  }
+
+  /* ホバー時に少し浮き上がる（全体のボタンの仕様と統一） */
+  .user-info-box:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  /* 小さめのグレーラベル */
+  .user-info-label {
+    font-size: 0.75rem;
+    color: #999;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+
+  /* 大きくてかっこいいメールアドレス */
+  .user-info-email {
+    font-size: 1.35rem;     /* ボタン（32px）に負けない大きめのサイズ */
+    color: #2c3e50;         /* ヘッダーの色（#2c3e50）と統一してスマートに */
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    word-break: break-all;  /* 長いメアドでも画面外に崩れないようにガード */
+  }
 </style>

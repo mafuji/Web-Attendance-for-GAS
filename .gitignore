@@ -1,3 +1,5 @@
 # すべてのサブフォルダ内のclasp設定ファイルをGitHubから弾く
 **/.clasp.json
 **/.clasprc.json
+**/.clasp.dev.json
+**/.clasp.prd.json

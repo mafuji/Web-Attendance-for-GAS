@@ -1,26 +1,3 @@
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  const menu = ui.createMenu('管理メニュー');
-  
-  menu
-    .addItem('パスワード自動更新を無効にする', 'deleteTrigger')
-    .addItem('パスワード自動更新を有効にする', 'createTrigger');
-
-  menu.addToUi();
-}
-function isTriggerExists(functionName) {
-  // 現在のプロジェクトに設定されているすべてのトリガーを取得
-  const triggers = ScriptApp.getProjectTriggers();
-  
-  // ループで1つずつ関数名をチェック
-  for (let i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === functionName) {
-      return true; // 見つかったらその時点で true を返して終了
-    }
-  }
-  return false; // ループが終わっても見つからなければ false
-}
-
 function doGet() {
   // 最初にログイン画面を表示
   return getHtmlTemplate('login')
@@ -111,51 +88,81 @@ function getLatestPassword() {
 }
 
 //================================================================================
-// トリガー用
+// カスタムメニュー・トリガー用
 //================================================================================
+/**
+ * ============================================================================
+ * 【約束事1】アプリ固有のカスタムメニュー構成を返す
+ * ============================================================================
+ * シンプルトリガー制限を回避するため、内部での ScriptApp 呼び出しを撤廃！
+ */
+function getAppMenuConfig() {
+  return [
+    { type: "item", name: "🟢 パスワード自動更新をONにする", functionName: "main_createAppTriggerOnly" },
+    { type: "item", name: "🛑 パスワード自動更新をOFFにする", functionName: "main_deleteAppTriggerOnly" }
+  ];
+}
 
-// 1分おきのトリガーを設定する（一度だけ実行する）
-function createTrigger() {
-  // クリア
-  deleteTrigger();
+/**
+ * ============================================================================
+ * 【約束事2】「アプリを公開する」ボタンを押したときに自動作成するトリガー
+ * ============================================================================
+ */
+function getAppTriggerConfig() {
+  return [
+    { 
+      // 実行したい関数名
+      functionName: "rotatePassword", 
+      // GASの本物のメソッド名と引数をそのまま配列で指定！
+      methods: [
+        { name: "everyMinutes", args: [1] }
+      ]
+    }
+  ];
+}
 
-  // 新規作成
-  ScriptApp.newTrigger('triggerHub')
+/**
+ * ============================================================================
+ * アプリ固有のロジック・トリガー制御部
+ * ============================================================================
+ */
+
+function main_createAppTriggerOnly() {
+  createAppTriggerOnly();
+
+  const ui = SpreadsheetApp.getUi()
+  ui.alert('定期処理の開始', '🟢 パスワードの自動更新を開始しました。\n今後1分おきに自動実行されます。', ui.ButtonSet.OK);
+}
+
+function main_deleteAppTriggerOnly() {
+  deleteAppTriggerOnly();
+
+  const ui = SpreadsheetApp.getUi()
+  ui.alert('定期処理の停止', '🛑 パスワードの自動更新を停止しました。', ui.ButtonSet.OK);
+}
+
+/**
+ * rotatePassword トリガーを直接新規作成する
+ */
+function createAppTriggerOnly() {
+  deleteAppTriggerOnly();
+
+  ScriptApp.newTrigger('rotatePassword')
     .timeBased()
     .everyMinutes(1)
     .create();
 }
 
-function deleteTrigger() {
-  // クリア
+/**
+ * rotatePasswordだけをピンポイントで削除する
+ */
+function deleteAppTriggerOnly() {
   const triggers = ScriptApp.getProjectTriggers();
-
   for (let i = 0; i < triggers.length; i++) {
-    ScriptApp.deleteTrigger(triggers[i]);
-  }    
-}
-
-function triggerHub() {
-  const now = new Date();
-  const min = now.getMinutes();
-  const hour = now.getHours();
-  const date = now.getDate();
-
-  // パスワード書き換え（毎分）
-  try {
-    rotatePassword(); 
-  } catch(e) {
-    console.error("エラー:rotatePassword:", e);
+    if (triggers[i].getHandlerFunction() === 'rotatePassword') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
   }
-
-  // タスク追加例：毎日夜の23:00に実行
-  // if (hour === 23 && min === 0) {
-  //   try {
-  //     autoBackUpLogSheet(); // ライブラリ側で関数を増やす
-  //   } catch(e) {
-  //     console.error(e);
-  //   }
-  // }
 }
 
 // 本体appのパスワードを書き換える

@@ -1,10 +1,32 @@
 function doGet(e) {
-  // クエリパラメータでサイト出し分け
   const page = e.parameter.p; // URLパラメータ "p" を取得
+  const email = Session.getActiveUser().getEmail(); // 💡ユーザーのメアドを一度取得
 
+  // --- [高速化] ログインユーザーの情報をUserシートから1回でまとめて取得 ---
+  let isRegisteredUser = false;
+  let isUserAdmin = false;
+
+  if (email) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const userSheet = ss.getSheetByName('User');
+    const lastRow = userSheet.getLastRow();
+    
+    if (lastRow >= 2) {
+      // A列(Email)とD列(isAdmin)の範囲だけを1回だけ取得
+      const userData = userSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+      const currentUserRow = userData.find(row => row[0] === email);
+      
+      if (currentUserRow) {
+        isRegisteredUser = true;         // 行が存在すれば登録済み
+        isUserAdmin = currentUserRow[3] === true; // 4列目がTRUEなら管理者
+      }
+    }
+  }
+
+  // 1. 管理者ページの出し分け
   if (page === 'summary') {
-    // 管理者チェック
-    if (!isAdmin()) {
+    // 💡 事前チェック済みの変数を使う（isAdmin()の再実行を防止）
+    if (!isUserAdmin) {
       return HtmlService.createHtmlOutput('アクセス権限がありません。')
         .addMetaTag('viewport', 'width=device-width, initial-scale=1')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -15,19 +37,19 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
-  // アクティブユーザーのメアド認証
-  // 未登録ユーザー or メアド取得失敗⇒再ログインページ
-  if (!isRegistered()){
+  // 2. アクティブユーザーの登録認証
+  // 💡 事前チェック済みの変数を使う（isRegistered()の再実行を防止）
+  if (!isRegisteredUser){
     return getHtmlTemplate("unknown_user").evaluate();
   }
 
   // セッションIDを生成
   const sessionId = generateSessionId();
 
-  // 設定
+  // 設定を取得
   const config = getConfig();
 
-  // 入退室入力画面テンプレート作成（各変数をHTMLテンプレートにセッションIDを直接埋め込む）
+  // 入退室入力画面テンプレート作成
   const template = getHtmlTemplate("index");
   template.sessionId = sessionId;
   template.requirePassword = config.requirePassword;
@@ -37,8 +59,8 @@ function doGet(e) {
   // 入退室入力画面を表示
   return template
     .evaluate()
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1') // プログラム側でも追加可能
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); // 枠外への干渉を許可
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1') 
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); 
 }
 
 // htmlから別のファイルを呼び出すための関数（スクリプトレットに記載）
@@ -80,31 +102,42 @@ function authorized(pwdInput) {
   return String(pwdInput).trim() === String(correctPwd).trim();
 }
 
-// 登録済みユーザーチェック
+// 登録済みユーザーチェック（高速版）
 function isRegistered() {
   const email = Session.getActiveUser().getEmail();  
 
-  if (!email) {
-    return false;
-  }
+  if (!email) return false;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const userSheet = ss.getSheetByName('User');
-  const data = userSheet.getDataRange().getValues();
+  const lastRow = userSheet.getLastRow();
   
-  // emailが一致するかどうか
-  return data.slice(1).some(row => row[0] === email);
+  if (lastRow < 2) return false;
+
+  // 💡 A列（Email）のデータだけをピンポイントで一括取得（2行目から、1列分だけ）
+  const emailValues = userSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  
+  // 1次元配列にフラット化して検索
+  return emailValues.map(row => row[0]).includes(email);
 }
 
-// ユーザーが管理者かどうかシートを見て判定する
+// ユーザーが管理者かどうかシートを見て判定する（高速版）
 function isAdmin() {
   const email = Session.getActiveUser().getEmail();
+  
+  if (!email) return false;
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const userSheet = ss.getSheetByName('User');
-  const data = userSheet.getDataRange().getValues();
+  const lastRow = userSheet.getLastRow();
+  
+  if (lastRow < 2) return false;
+  
+  // 💡 A列（Email）からD列（管理者フラグ）までの4列だけを取得範囲にする
+  const userData = userSheet.getRange(2, 1, lastRow - 1, 4).getValues();
   
   // emailが一致し、かつ4列目(index 3)がTRUEの行を探す
-  return data.slice(1).some(row => row[0] === email && row[3] === true);
+  return userData.some(row => row[0] === email && row[3] === true);
 }
 
 // セッションID生成
@@ -153,10 +186,10 @@ function generateSessionId() {
 
   console.log(`User: ${userEmail} のセッションを更新しました。ID: ${sessionId}`);
 
-  // 💡 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
+  // 　 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
   SpreadsheetApp.flush(); 
 
-  return sessionId; // 💡 生成したIDを返す  
+  return sessionId; // 　 生成したIDを返す  
 }
 
 // セッションの有効性チェック
@@ -204,35 +237,22 @@ function isSessionValid(sessionId) {
 
 // 打刻レコード追加
 function insertRecord(status, sessionId) {
-  // セッションの有効性チェック
+  // 💡 1. 通常呼び出し時はここでセッションチェック
   if (!isSessionValid(sessionId)) {
     return null;
   }
 
-  // ログシート取得
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("AttendanceLog");
-
-  // 現在時刻とアクティブユーザーの取得
-  const timestamp = new Date();
-  const user = Session.getActiveUser().getEmail();
-
-  // 登録
-  sheet.appendRow([timestamp, user, status]);
-
-  // 打刻した時刻を返す
-  const formattedTime = Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd HH:mm:ss");
-  return formattedTime;
+  // 💡 2. 実際の書き込み処理は、下の共通関数（_executeInsert）に丸投げする
+  return _executeInsert(status);
 }
 
 // パスコードを検証し、正しければ打刻処理を行う（一括処理版）
 function verifyPasswordAndInsert(status, sessionId, inputPassword) {
-  // 1. セッションの有効性チェック（insertRecord内でもやりますが、ミスマッチ防止でここでも通します）
+  // 💡 1. ここでセッションチェック（1回目）
   if (!isSessionValid(sessionId)) {
     return null;
   }
 
-  // 2. 💡 パスコードはActiveSpreadsheet内のConfigシートを参照
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Config");
   
@@ -240,12 +260,9 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
     return { success: false, message: 'システムエラー:「Config」シートが見つかりません。' };
   }
   
-  // ConfigシートのA2セルからパスコードを取得
   const correctPassword = configSheet.getRange("A2").getValue().toString(); 
   const previousPassword = configSheet.getRange("B2").getValue().toString(); 
-  console.log(`cerrect:${correctPassword}, previous:${previousPassword}, input:${inputPassword}`);
 
-  // 3. パスコード判定
   if (inputPassword !== correctPassword && inputPassword !== previousPassword) {
     return { 
       success: false, 
@@ -253,16 +270,10 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
     };
   }
 
-  // 4. 💡 パスコードが一致していたら、元の insertRecord を呼び出す
+  // 💡 2. パスワードが合っていれば、二度目のセッションチェックをパスして直接書き込む
   try {
-    const formattedTime = insertRecord(status, sessionId);
+    const formattedTime = _executeInsert(status); // 👈 共通関数を直接呼ぶ（2回目のチェックをスキップ！）
     
-    // insertRecord側でセッション切れ等によりnullが返ってきた場合
-    if (formattedTime === null) {
-      return null;
-    }
-
-    // HTML（JS）側が期待しているオブジェクト形式で返す
     return {
       success: true,
       timestamp: formattedTime
@@ -277,55 +288,72 @@ function verifyPasswordAndInsert(status, sessionId, inputPassword) {
   }
 }
 
+// 💡 共通の書き込みロジック（シート操作のみを行う軽い関数）
+function _executeInsert(status) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("AttendanceLog");
+
+  const timestamp = new Date();
+  const user = Session.getActiveUser().getEmail();
+
+  // ログに登録
+  sheet.appendRow([timestamp, user, status]);
+
+  // 打刻した時刻を返す
+  return Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd HH:mm:ss");
+}
+
 // アクティブユーザーのステータスとセッションIDを取得
 function getStatusOfActiveUser() {
   const email = Session.getActiveUser().getEmail();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // --- 1. セッションIDの取得 (Userシート) ---
+  // --- 1. Userシートのメモリ上での一発検索 ---
   const userSheet = ss.getSheetByName('User');
-  const userData = userSheet.getDataRange().getValues();
+  const userData = userSheet.getDataRange().getValues(); // 全データを2次元配列として一括取得
+  
+  // A列(Email)が一致する行を高速検索
+  const userRow = userData.find(row => row[0] === email);
+  
+  let userName = "ゲストユーザー";
   let sessionId = null;
-
-  // A列:Email, E列:session_id
-  for (let i = 1; i < userData.length; i++) {
-    if (userData[i][0] === email) {
-      sessionId = userData[i][4] || null; // E列
-      break;
-    }
+  
+  if (userRow) {
+    userName = userRow[1] || "名前未設定"; // B列: Name
+    sessionId = userRow[4] || null;        // E列: session_id
   }
 
-  // --- 2. 打刻ステータスの取得 (AttendanceLogシート) ---
+  // --- 2. AttendanceLogシートの高速スキャン ---
   const logSheet = ss.getSheetByName("AttendanceLog");
   const lastRow = logSheet.getLastRow();
   let lastAction = null;
 
   if (lastRow >= 2) {
+    // ⚠️ 💡 [重要] getRangeでシートからデータを「一括」でメモリ上に持ってきて、JSの高速構文で処理する
     const logValues = logSheet.getRange(2, 1, lastRow - 1, 3).getValues();
-    // 逆順（新しい順）にスキャン
-    for (let i = logValues.length - 1; i >= 0; i--) {
-      const row = logValues[i];
-      if (row[1] === email) {
-        lastAction = {
-          timestamp: Utilities.formatDate(row[0], "JST", "yyyy/MM/dd HH:mm:ss"),
-          status: row[2] // C列: ステータス
-        };
-        break;
-      }
+    
+    // 配列を後ろから検索（最新の打刻を1発で見つける）
+    // ループを回さず、JavaScriptの最速エンジンに任せます
+    const latestLog = logValues.reverse().find(row => row[1] === email);
+    
+    if (latestLog) {
+      lastAction = {
+        timestamp: Utilities.formatDate(latestLog[0], "JST", "yyyy/MM/dd HH:mm:ss"), // A列: 日時
+        status: latestLog[2] // C列: ステータス (IN / OUT)
+      };
     }
   }
 
   // --- 3. 結果をまとめて返す ---
   return {
     email: email,
-    sessionId: sessionId, // セッションIDのみ
+    name: userName,
+    sessionId: sessionId, 
     lastAction: lastAction
   };
 }
 
-// 期間指定付きのデータ取得 + 現在の稼働状況
-// @param {string} startStr "yyyy-mm-dd"
-// @param {string} endStr "yyyy-mm-dd"
+// 期間指定付きのデータ取得 + 現在の稼働状況（超高速版）
 function getSummaryData(startStr, endStr) {
   if (!isAdmin()) { 
     throw new Error("権限がありません");
@@ -345,7 +373,7 @@ function getSummaryData(startStr, endStr) {
 
   // --- 1. 全ユーザーのベースマップ作成 ---
   const userMap = {};
-  let totalUserCount = 0; // 全アクティブユーザー数
+  let totalUserCount = 0;
 
   userRows.slice(1).forEach(row => {
     const [email, name, isInactive] = row;
@@ -357,60 +385,62 @@ function getSummaryData(startStr, endStr) {
         logs: [], 
         inCount: 0, 
         rate: 0,
-        isCurrentlyIn: false // 現在入室フラグ
+        isCurrentlyIn: false
       };
     }
   });
 
-  // --- 2. ログの解析（全期間の最新状態と、指定期間の集計） ---
-  // ログを時系列順に処理するため、シートが古い順であることを前提とします
+  // --- 2. [高速化] 現在の入室状態（isCurrentlyIn）を配列の逆順から一発判定 ---
+  // 全ログを頭から走査してフラグをパタパタ切り替えるのをやめ、最新ログから逆引きします
+  const checkedUsers = new Set();
+  for (let i = logRows.length - 1; i >= 1; i--) {
+    const [_, email, status] = logRows[i];
+    if (!email || !userMap[email] || checkedUsers.has(email)) continue;
+    
+    if (status === 'IN') userMap[email].isCurrentlyIn = true;
+    checkedUsers.add(email);
+    if (checkedUsers.size === totalUserCount) break; // 全員分決まったら終了
+  }
+
+  // --- 3. [高速化] 指定期間内のログだけをピンポイントで解析 ---
   logRows.slice(1).forEach(row => {
     const [timestamp, email, status] = row;
     if (!timestamp || !email || !status || !userMap[email]) return;
 
-    const logDate = new Date(timestamp);
+    // 💡 まずタイムスタンプの数値(ms)で判定し、期間外なら new Date() すらせずに即スキップ
+    const logTimeMs = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
+    if (logTimeMs < startDate.getTime() || logTimeMs > endDate.getTime()) return;
 
-    // A. 「現在の入室状態」を判定 (全ログを走査して最新の状態に更新し続ける)
+    // 期間内であることが確定して初めて、日付文字列やオブジェクトを作る
+    const dateStr = Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd");
+    const timeStr = Utilities.formatDate(timestamp, "JST", "HH:mm");
+
     if (status === 'IN') {
-      userMap[email].isCurrentlyIn = true;
+      userMap[email].inCount++;
+      userMap[email].logs.push({ date: dateStr, in: timeStr, out: '', duration: '', rawIn: logTimeMs });
     } else if (status === 'OUT') {
-      userMap[email].isCurrentlyIn = false;
-    }
-
-    // B. 「指定期間内」の集計
-    if (logDate >= startDate && logDate <= endDate) {
-      const dateStr = Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd");
-      const timeStr = Utilities.formatDate(timestamp, "JST", "HH:mm");
-
-      if (status === 'IN') {
-        userMap[email].inCount++;
-        userMap[email].logs.push({ date: dateStr, in: timeStr, out: '', duration: '', rawIn: timestamp });
-      } else if (status === 'OUT') {
-        const userLogs = userMap[email].logs;
-        const lastLog = userLogs[userLogs.length - 1];
-        if (lastLog && lastLog.in && !lastLog.out) {
-          lastLog.out = timeStr;
-          const diffMs = timestamp - lastLog.rawIn;
-          const hours = Math.floor(diffMs / (1000 * 60 * 60));
-          const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-          lastLog.duration = `${hours}h ${mins}m`;
-        }
+      const userLogs = userMap[email].logs;
+      const lastLog = userLogs[userLogs.length - 1];
+      if (lastLog && lastLog.in && !lastLog.out) {
+        lastLog.out = timeStr;
+        const diffMs = logTimeMs - lastLog.rawIn;
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        lastLog.duration = `${hours}h ${mins}m`;
       }
     }
   });
 
-  // --- 3. 統計の算出 ---
+  // --- 4. 統計の算出 ---
   const diffDays = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const targetDays = diffDays; 
 
   let totalRateSum = 0;
-  let currentlyInCount = 0; // 現在入室中の合計人数
+  let currentlyInCount = 0;
 
   const userList = Object.values(userMap).map(user => {
-    // 1. 現在入室中ならカウント
     if (user.isCurrentlyIn) currentlyInCount++;
 
-    // 2. 指定期間にログがあるユーザーのみリスト化の対象とする（既存仕様維持）
     if (user.logs.length > 0) {
       user.rate = targetDays > 0 ? Math.round((user.inCount / targetDays) * 100) : 0;
       totalRateSum += user.rate;
@@ -424,55 +454,46 @@ function getSummaryData(startStr, endStr) {
   return {
     stats: {
       averageRate: userList.length > 0 ? Math.round(totalRateSum / userList.length) : 0,
-      currentlyIn: currentlyInCount,    // 現在の入室人数
-      totalActiveUsers: totalUserCount, // 分母となる全ユーザー数
-      activeInPeriod: userList.length   // 期間内に一度でも打刻した人数
+      currentlyIn: currentlyInCount,
+      totalActiveUsers: totalUserCount,
+      activeInPeriod: userList.length
     },
     users: userList
   };
 }
 
 //================================================================================
-// トリガー用
+// カスタムメニュー・トリガー用
 //================================================================================
 
-// トリガーを設定する
-function createTrigger() {
-  // クリア
-  const triggers = ScriptApp.getProjectTriggers();
-  
-  for (let i = 0; i < triggers.length; i++) {
-    ScriptApp.deleteTrigger(triggers[i]);
-  }  
-  // 新規作成
-  ScriptApp.newTrigger('triggerHub')
-    .timeBased()
-    .everyMinutes(1)
-    .create();
+/**
+ * ============================================================================
+ * 【約束事1】アプリ固有のカスタムメニュー構成を返す
+ * ============================================================================
+ */
+function getAppMenuConfig() {
+  // 現時点ではメニューなし（将来追加したくなったらこの配列の中にオブジェクトを増やす）
+  return [
+    // 例: { type: "item", name: "? 新機能の実行", functionName: "app_newFeature" }
+  ];
 }
 
-// 複数の処理を1つのトリガーにまとめる
-function triggerHub() {
-  const now = new Date();
-  const min = now.getMinutes();
-  const hour = now.getHours();
-  const date = now.getDate();
-
-  // Controllerシートから期限切れのセッション情報を削除する（毎分）
-  try {
-    deleteExpiredSessions(); 
-  } catch(e) {
-    console.error("エラー:deleteExpiredSessions:", e);
-  }
-
-  // タスク追加例：毎日夜の23:00に実行
-  // if (hour === 23 && min === 0) {
-  //   try {
-  //     autoBackUpLogSheet(); // ライブラリ側で関数を増やす
-  //   } catch(e) {
-  //     console.error(e);
-  //   }
-  // }
+/**
+ * ============================================================================
+ * 【約束事2】「アプリを公開する」ボタンを押したときに自動作成するトリガー
+ * ============================================================================
+ */
+function getAppTriggerConfig() {
+  return [
+    { 
+      // 実行したい関数名
+      functionName: "deleteExpiredSessions", 
+      // GASの本物のメソッド名と引数をそのまま配列で指定！
+      methods: [
+        { name: "everyMinutes", args: [1] }
+      ]
+    }
+  ];
 }
 
 // Controllerシートから期限切れのセッション情報を削除する
@@ -481,7 +502,7 @@ function deleteExpiredSessions() {
   const sheet = ss.getSheetByName('Controller');
 
   const lastRow = sheet.getLastRow();
-  // 💡 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
+  // 　 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
   if (lastRow < 2) return;
 
   const lastColumn = sheet.getLastColumn();
@@ -491,7 +512,7 @@ function deleteExpiredSessions() {
   const now = new Date().getTime();
   const DATE_COL_INDEX = 2; // C列 (0始まりで2)
 
-  // 💡 生き残るデータ（期限内データ）だけを格納する配列
+  // 　 生き残るデータ（期限内データ）だけを格納する配列
   const keepRows = [header]; 
 
   // 2行目（インデックス1）以降をチェック
@@ -507,13 +528,13 @@ function deleteExpiredSessions() {
 
     const expiredAt = new Date(rawCell).getTime();
 
-    // 💡 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
+    // 　 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
     if (expiredAt >= now) {
       keepRows.push(row);
     }
   }
 
-  // 💡 データに変化（削除対象）があった場合のみシートを更新
+  // 　 データに変化（削除対象）があった場合のみシートを更新
   if (keepRows.length < values.length) {
     // 1. 一旦シートのデータ部分をすべてクリア
     sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();

@@ -2,6 +2,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     setDefaultDates(); // 1. デフォルト日付をセット
     fetchData();       // 2. データ取得
+    document.getElementById('search-btn').addEventListener('click', fetchData);
   });
 
   // 当月初(1日)〜今日をセットする
@@ -34,11 +35,6 @@
       })
       .getSummaryData(start, end);
   }
-
-  // 日付が変わったら自動で再読み込みする場合
-  document.querySelectorAll('.date-input').forEach(el => {
-    el.addEventListener('change', fetchData);
-  });
 
   // 取得したデータを画面に描画
   function renderSummary(data) {
