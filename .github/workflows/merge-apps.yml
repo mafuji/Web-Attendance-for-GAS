@@ -81,6 +81,26 @@ jobs:
             const outputPath = path.join(prdPath, outputFileName);
             fs.writeFileSync(outputPath, gsContent.trim(), 'utf8');
             console.log(`Successfully created ${outputPath}`);
+
+            // ====================================================
+            // 💡 【新規追加】共通の updater.js をアプリごとにカスタマイズして配置
+            // ====================================================
+            const sharedUpdaterPath = path.join(process.cwd(), 'src', 'shared', 'updater.js');
+            if (fs.existsSync(sharedUpdaterPath)) {
+              let updaterContent = fs.readFileSync(sharedUpdaterPath, 'utf8');
+              
+              // TARGET_APP_DIR の部分を、現在の appDir ("main-app" や "controller-app") に置換
+              updaterContent = updaterContent.replace(
+                /const TARGET_APP_DIR = ".*?";/,
+                `const TARGET_APP_DIR = "${appDir}";`
+              );
+              
+              const destUpdaterPath = path.join(prdPath, 'updater.js');
+              fs.writeFileSync(destUpdaterPath, updaterContent, 'utf8');
+              console.log(`Successfully generated and copied updater.js to ${destUpdaterPath}`);
+            } else {
+              console.log(`[Warning] Shared updater.js not found at ${sharedUpdaterPath}`);
+            }
           }
 
           // 2つのアプリを実行（出力先ディレクトリは関数内で自動処理）
@@ -97,7 +117,7 @@ jobs:
           git add prd/
           
           if ! git diff --cached --quiet; then
-            git commit -m "chore: auto-generated merged GS and config files [skip ci]"
+            git commit -m "chore: auto-generated merged GS, updater, and config files [skip ci]"
             # ${GITHUB_REF_NAME} を使うことで、現在Pushされたブランチ（devなど）に自動でPushされます
             git push origin ${GITHUB_REF_NAME}
           else
