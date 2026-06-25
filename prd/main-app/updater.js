@@ -159,14 +159,25 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
 
 /**
  * デプロイとトリガー作成（および既存デプロイの更新）
+ * @param {Object} [e] - トリガー実行時に渡されるイベントオブジェクト
  */
-function createDeployAndTrigger(){
+function createDeployAndTrigger(e){
+  // 引数 e の有無で自動実行（トリガー）か手動実行かを判別
+  const isTriggered = !!(e && (e['trigger-uid'] || e.authMode || e.triggerUid));
+
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
-  const ui = SpreadsheetApp.getUi(); // スコープバグ修正
+  
+  // 手動実行の時だけUIを取得（自動実行時のUIエラー予防）
+  const ui = !isTriggered ? SpreadsheetApp.getUi() : null; 
   
   try {
-    showToast('最新のコードでWebアプリを公開中...', '⚙️ セットアップ');
+    // 手動実行の時だけトーストを表示
+    if (!isTriggered) {
+      showToast('最新のコードでWebアプリを公開中...', '⚙️ セットアップ');
+    } else {
+      Logger.log('⏳ [自動実行] 最新のコードでWebアプリを公開中...');
+    }
     
     // 1. 新しい「版（バージョン）」を必ず作成する
     const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
@@ -253,7 +264,12 @@ function createDeployAndTrigger(){
     // ----------------------------------------------------
     // タスク2: 全トリガーの一括設置
     // ----------------------------------------------------
-    showToast('自動更新およびアプリのトリガーを設置中...', '⚙️ セットアップ');
+    if (!isTriggered) {
+      showToast('自動更新およびアプリのトリガーを設置中...', '⚙️ セットアップ');
+    } else {
+      Logger.log('⏳ [自動実行] 自動更新およびアプリのトリガーを設置中...');
+    }
+    
     const allTriggers = ScriptApp.getProjectTriggers();
 
     // ① updater自身の「毎日深夜3時」の自動更新トリガー
@@ -280,7 +296,6 @@ function createDeployAndTrigger(){
             
             config.methods.forEach(method => {
               if (typeof builder[method.name] === 'function') {
-                // メソッドチェーンの戻り値を常に安全に代入
                 builder = builder[method.name].apply(builder, method.args || []);
               }
             });
@@ -299,16 +314,24 @@ function createDeployAndTrigger(){
     if (deployedData && deployedData.entryPoints && deployedData.entryPoints.length > 0) {
       successMessage += `🔗 生成された公開URL:\n${deployedData.entryPoints[0].webApp.url}`;
     } else if (existingDeployId) {
-      // 更新時はURLがすでにわかっている、または既存デプロイ一覧から再取得可能
       successMessage += `🔗 公開URL（既存）が最新コードに更新されました。\nシステム管理メニューの「現在の公開状況を確認する」からURLを取得できます。`;
     } else {
       successMessage += '（※すでに公開済みのWebアプリURLが維持されています）';
     }
     
-    ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
+    // 判定による出し分け
+    if (isTriggered) {
+      Logger.log(`✅ [自動実行完了] ${successMessage.replace(/\n/g, ' ')}`);
+    } else if (ui) {
+      ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
+    }
 
   } catch (e) {
-    ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
+    if (isTriggered) {
+      Logger.log('❌ [自動実行エラー] 処理中にエラーが発生しました:\n' + e.toString());
+    } else if (ui) {
+      ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
+    }
   }
 }
 
