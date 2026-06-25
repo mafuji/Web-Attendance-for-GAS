@@ -99,8 +99,8 @@ function getLatestPassword() {
  */
 function getAppMenuConfig() {
   return [
-    // 表示を固定のシンプルな文言にします
-    { type: "item", name: "✅ パスワード自動更新のON / OFFを切り替える", functionName: "main_toggleTrigger" }
+    { type: "item", name: "🟢 パスワード自動更新をONにする", functionName: "main_createAppTriggerOnly" },
+    { type: "item", name: "🛑 パスワード自動更新をOFFにする", functionName: "main_deleteAppTriggerOnly" }
   ];
 }
 
@@ -128,31 +128,18 @@ function getAppTriggerConfig() {
  * ============================================================================
  */
 
-/**
- * トリガーのON/OFFを切り替えるカスタムメニュー関数
- * ユーザーがボタンを「クリックした」後は、すべての権限が使える（シンプルトリガーではない）ため、
- * ここで ScriptApp を使うのは100%安全です。
- */
-function main_toggleTrigger() {
-  const ui = SpreadsheetApp.getUi();
-  
-  if (isAppTriggerRunning()) {
-    // 稼働中なら止める
-    deleteAppTriggerOnly();
-    ui.alert('定期処理の停止', '🛑 パスワードの自動更新を停止しました。', ui.ButtonSet.OK);
-  } else {
-    // 停止中なら動かす
-    createAppTriggerOnly();
-    ui.alert('定期処理の開始', '✅ パスワードの自動更新を開始しました。\n今後1分おきに自動実行されます。', ui.ButtonSet.OK);
-  }
+function main_createAppTriggerOnly() {
+  createAppTriggerOnly();
+
+  const ui = SpreadsheetApp.getUi()
+  ui.alert('定期処理の開始', '🟢 パスワードの自動更新を開始しました。\n今後1分おきに自動実行されます。', ui.ButtonSet.OK);
 }
 
-/**
- * 現在、rotatePassword トリガーが稼働中かどうかを判定する
- */
-function isAppTriggerRunning() {
-  const triggers = ScriptApp.getProjectTriggers();
-  return triggers.some(t => t.getHandlerFunction() === 'rotatePassword');
+function main_deleteAppTriggerOnly() {
+  deleteAppTriggerOnly();
+
+  const ui = SpreadsheetApp.getUi()
+  ui.alert('定期処理の停止', '🛑 パスワードの自動更新を停止しました。', ui.ButtonSet.OK);
 }
 
 /**
