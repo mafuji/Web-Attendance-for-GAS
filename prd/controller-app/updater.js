@@ -26,36 +26,25 @@ function showToast(message, title = '⚙️ システム') {
  * アップデートチェック＆実行のメイン関数
  */
 function checkAndExecuteUpdate() {
-  const url = getGitHubApiUrl();
-  const token = PropertiesService.getScriptProperties().getProperty("GH_TOKEN");
+  // APIではなくraw.githubusercontentから直接version.jsonを落とす（Token不要・制限なし）
+  const url = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/src/shared/version.json`;
   
-  const response = UrlFetchApp.fetch(url, { 
-    "muteHttpExceptions": true,
-    "headers": token ? { "Authorization": "token " + token } : {}
-  });
+  const response = UrlFetchApp.fetch(url, { "muteHttpExceptions": true });
   
   if (response.getResponseCode() !== 200) {
-    Logger.log(`GitHubからの情報取得に失敗しました。ステータス: ${response.getResponseCode()}`);
-    Logger.log(`詳細: ${response.getContentText()}`);
+    Logger.log(`バージョン情報の取得に失敗しました。ステータス: ${response.getResponseCode()}`);
     return;
   }
   
   const resData = JSON.parse(response.getContentText());
-  let latestRelease;
+  const latestVersion = resData.version;
   
-  if (Array.isArray(resData)) {
-    if (resData.length === 0) return;
-    latestRelease = resData[0]; // 開発モード：最新のプレリリース
-  } else {
-    latestRelease = resData; // 本番モード：最新の正式リリース
-  }
-  
-  const latestVersion = latestRelease.tag_name;
   Logger.log(`現在のバージョン: ${CURRENT_VERSION} / 最新バージョン: ${latestVersion}`);
   
   if (latestVersion !== CURRENT_VERSION) {
     Logger.log("新バージョンを検知しました。アップデート処理を開始します...");
     
+    // コードとマニフェストを取得（こちらもAPIリミット対象外のRaw配信から取得）
     const rawCode = fetchFromGitHub(latestVersion, TARGET_FILE);
     if (!rawCode) return;
 
@@ -73,42 +62,16 @@ function checkAndExecuteUpdate() {
 }
 
 /**
- * 環境に応じたGitHub APIのURLを取得
- */
-function getGitHubApiUrl() {
-  const envMode = PropertiesService.getScriptProperties().getProperty("ENV_MODE");
-  
-  if (envMode === "development") {
-    Logger.log("--- [開発モード] プレリリースを含む最新を取得します ---");
-    return `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases`;
-  } else {
-    Logger.log("--- [本番モード] 正式リリースのみを取得します ---");
-    return `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/latest`;
-  }
-}
-
-/**
- * 環境に応じて、GitHubまたはjsDelivrから各種アセットファイルを安全にダウンロードする
+ * 指定されたバージョンのアセットファイルをGitHubのRawから直接安全にダウンロードする
  */
 function fetchFromGitHub(version, fileName) {
-  const envMode = PropertiesService.getScriptProperties().getProperty("ENV_MODE");
-  let downloadUrl = "";
-  let options = { "muteHttpExceptions": true };
-
   const remotePath = `prd/${TARGET_APP_DIR}/${fileName}`;
-
-  if (envMode === "development") {
-    downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${version}/${remotePath}`;
-    const token = PropertiesService.getScriptProperties().getProperty("GH_TOKEN");
-    if (token) {
-      options["headers"] = { "Authorization": "token " + token };
-    }
-  } else {
-    downloadUrl = `https://cdn.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@${version}/${remotePath}`;
-  }
+  
+  // API制限に引っかからない raw.githubusercontent を使用
+  const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${version}/${remotePath}`;
 
   Logger.log(`[DL開始] 接続先: ${downloadUrl}`);
-  const response = UrlFetchApp.fetch(downloadUrl, options);
+  const response = UrlFetchApp.fetch(downloadUrl, { "muteHttpExceptions": true });
   
   if (response.getResponseCode() !== 200) {
     Logger.log(`[Error] ${fileName} のダウンロードに失敗しました。ステータス: ${response.getResponseCode()}`);
@@ -122,7 +85,7 @@ function fetchFromGitHub(version, fileName) {
  */
 function updateProjectFiles(newCode, newManifest, latestVersion) {
   const scriptId = ScriptApp.getScriptId();
-  const token = ScriptApp.getOAuthToken();
+  const token = ScriptApp.getOAuthToken(); // GAS内部の認証トークン（GitHubとは無関係）
   
   const getUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
   const getResponse = UrlFetchApp.fetch(getUrl, {
