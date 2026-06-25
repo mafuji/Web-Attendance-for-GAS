@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - '**' # 全てのブランチへのpushをトリガー（本番時は 'main' のみに絞ることも可能）
-    tags:
-      - 'v*' # 💡「v1.0.0」などのリリース用タグがPushされた時もこのActionsを起動する
 
 jobs:
   merge-and-commit:
@@ -85,27 +83,6 @@ jobs:
             console.log(`Successfully created ${outputPath}`);
 
             // ====================================================
-            // 💡 【新規追加】タグPushの時だけ version.json を本物のタグ名で更新
-            // ====================================================
-            const versionJsonPath = path.join(prdPath, 'version.json');
-            const githubRefType = process.env.GITHUB_REF_TYPE; // "tag" または "branch"
-            const githubRefName = process.env.GITHUB_REF_NAME; // "v1.0.0" や "main" など
-
-            if (githubRefType === 'tag') {
-              // 正式リリース（タグが打たれた）の時だけ、version.json をその値に書き換え
-              fs.writeFileSync(versionJsonPath, JSON.stringify({ version: githubRefName }), 'utf8');
-              console.log(`[Release] Updated version.json to ${githubRefName} in ${appDir}`);
-            } else {
-              // 普段の開発Pushの時は、ファイルがなければ作成（既存の最新バージョン表記は破壊しない）
-              if (!fs.existsSync(versionJsonPath)) {
-                fs.writeFileSync(versionJsonPath, JSON.stringify({ version: "v0.0.0" }), 'utf8');
-                console.log(`[Init] Created default version.json in ${appDir}`);
-              } else {
-                console.log(`[Develop] Skipped version.json update to preserve the latest release tag.`);
-              }
-            }
-
-            // ====================================================
             // 💡 共通の updater.js をアプリごとにカスタマイズして配置
             // ====================================================
             const sharedUpdaterPath = path.join(process.cwd(), 'src', 'shared', 'updater.js');
@@ -141,7 +118,6 @@ jobs:
           
           if ! git diff --cached --quiet; then
             git commit -m "chore: auto-generated merged GS, updater, and config files [skip ci]"
-            # 現在のブランチまたはタグに対して自動でPushされます
             git push origin ${GITHUB_REF_NAME}
           else
             echo "No changes to commit"
