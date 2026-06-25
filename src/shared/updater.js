@@ -3,7 +3,7 @@
 // ==========================================
 const GITHUB_USER = "mafuji";
 const GITHUB_REPO = "Web-Attendance-for-GAS";
-const CURRENT_VERSION = "v1.0.0-beta.3"; // アップデート後にここも自動で書き換わります
+const CURRENT_VERSION = "v1.0.0"; // アップデート後にここも自動で書き換わります
 
 // ==========================================
 // アプリごとの固有設定
