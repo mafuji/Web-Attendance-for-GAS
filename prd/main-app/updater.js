@@ -396,13 +396,13 @@ function menu_setupInitialDeploymentAndTriggers() {
 }
 
 /**
- * 2. 「🔄 修正パッチを適用する」の実装
+ * 2. 「🔄 アプリを更新する」の実装
  */
 function menu_forceExecuteUpdate() {
   const ui = SpreadsheetApp.getUi();
   
   const response = ui.alert(
-    '修正パッチの適用（手動アップデート）',
+    'アプリの更新',
     'GitHubから最新のプログラムを今すぐダウンロードし、現在のURLを維持したままアプリを更新します。よろしいですか？',
     ui.ButtonSet.YES_NO
   );
@@ -411,13 +411,13 @@ function menu_forceExecuteUpdate() {
     return;
   }
   
-  showToast('最新パッチを適用中（GitHub通信＆デプロイを実行）...', '⚙️ パッチ適用');
+  showToast('アプリを更新中（GitHub通信＆デプロイを実行）...', '⚙️ アプリ更新');
 
   try {
     checkAndExecuteUpdate();
-    ui.alert('アップデート完了', '🎉 最新の修正パッチの適用に成功しました！\n\nWebアプリのURLは変わっていません。画面をリロードしてご確認ください。', ui.ButtonSet.OK);
+    ui.alert('アップデート完了', '🎉\n\nWebアプリのURLは変わっていません。画面をリロードしてご確認ください。', ui.ButtonSet.OK);
   } catch (e) {
-    ui.alert('❌ パッチ適用失敗', 'エラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
+    ui.alert('❌ 更新失敗', 'エラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
   }
 }
 
