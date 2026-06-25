@@ -158,13 +158,12 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
 }
 
 /**
- * デプロイとトリガー作成（および既存デプロイの更新）
+ * デプロイとトリガー作成（メインコントロール関数）
  * @param {Object} [e] - トリガー実行時に渡されるイベントオブジェクト
  */
-function createDeployAndTrigger(e){
+function createDeployAndTrigger(e) {
   // 引数 e の有無で自動実行（トリガー）か手動実行かを判別
   const isTriggered = !!(e && (e['trigger-uid'] || e.authMode || e.triggerUid));
-
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
   
@@ -172,140 +171,27 @@ function createDeployAndTrigger(e){
   const ui = !isTriggered ? SpreadsheetApp.getUi() : null; 
   
   try {
-    // 手動実行の時だけトーストを表示
+    // ----------------------------------------------------
+    // 1. デプロイ作業の実行
+    // ----------------------------------------------------
     if (!isTriggered) {
       showToast('最新のコードでWebアプリを公開中...', '⚙️ セットアップ');
     } else {
       Logger.log('⏳ [自動実行] 最新のコードでWebアプリを公開中...');
     }
-    
-    // 1. 新しい「版（バージョン）」を必ず作成する
-    const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
-    const createVersion = UrlFetchApp.fetch(versionUrl, {
-      method: "post",
-      headers: { "Authorization": "Bearer " + token },
-      contentType: "application/json",
-      payload: JSON.stringify({ "description": `Deploy via Update System (${CURRENT_VERSION})` }),
-      muteHttpExceptions: true
-    });
-    
-    let vNum = 1;
-    if (createVersion.getResponseCode() === 200) {
-      vNum = JSON.parse(createVersion.getContentText()).versionNumber;
-      Logger.log(`🟢 新しい版 (版 ${vNum}) を作成しました。`);
-    } else {
-      throw new Error("新しい版の作成に失敗しました: " + createVersion.getContentText());
-    }
-    
-    // 既存の本物デプロイがあるかチェック
-    const deployUrl = `https://script.googleapis.com/v1/projects/${scriptId}/deployments`;
-    const getDeploy = UrlFetchApp.fetch(deployUrl, { method: "get", headers: { "Authorization": "Bearer " + token }, muteHttpExceptions: true });
-    
-    let existingDeployId = null;
-    if (getDeploy.getResponseCode() === 200) {
-      const deployData = JSON.parse(getDeploy.getContentText());
-      if (deployData.deployments) {
-        const realDeploy = deployData.deployments.find(d => 
-          d.deploymentConfig && 
-          d.deploymentConfig.manifestFileName === "appsscript" && 
-          d.updateTime !== "1970-01-01T00:00:00Z"
-        );
-        if (realDeploy) existingDeployId = realDeploy.deploymentId;
-      }
-    }
-    
-    let deployedData = null;
-    
-    if (existingDeployId) {
-      // 【仕様改善】既存デプロイがある場合は、新しい版(vNum)で既存デプロイを更新(PUT)する
-      const updateDeployUrl = `${deployUrl}/${existingDeployId}`;
-      const updateResponse = UrlFetchApp.fetch(updateDeployUrl, {
-        method: "put",
-        headers: { "Authorization": "Bearer " + token },
-        contentType: "application/json",
-        payload: JSON.stringify({
-          "deploymentConfig": {
-            "versionNumber": vNum,
-            "manifestFileName": "appsscript",
-            "description": `Updated to version ${vNum}`
-          }
-        }),
-        muteHttpExceptions: true
-      });
-      
-      if (updateResponse.getResponseCode() === 200) {
-        deployedData = JSON.parse(updateResponse.getContentText());
-        Logger.log(`🟢 既存のデプロイ [${existingDeployId}] を 新しい版 ${vNum} に更新しました。`);
-      } else {
-        throw new Error("デプロイの更新に失敗しました: " + updateResponse.getContentText());
-      }
-    } else {
-      // 無ければ新規デプロイ(POST)
-      const deployResponse = UrlFetchApp.fetch(deployUrl, {
-        method: "post",
-        headers: { "Authorization": "Bearer " + token },
-        contentType: "application/json",
-        payload: JSON.stringify({
-          "versionNumber": vNum,
-          "manifestFileName": "appsscript",
-          "description": "Initial production deploy"
-        }),
-        muteHttpExceptions: true
-      });
-      
-      if (deployResponse.getResponseCode() === 200) {
-        deployedData = JSON.parse(deployResponse.getContentText());
-        Logger.log("🟢 初代デプロイを樹立しました。");
-      } else {
-        throw new Error("デプロイの作成に失敗しました: " + deployResponse.getContentText());
-      }
-    }
+
+    const deployedData = executeDeployment(scriptId, token);
 
     // ----------------------------------------------------
-    // タスク2: 全トリガーの一括設置
+    // 2. トリガー作成作業の実行
     // ----------------------------------------------------
     if (!isTriggered) {
       showToast('自動更新およびアプリのトリガーを設置中...', '⚙️ セットアップ');
     } else {
       Logger.log('⏳ [自動実行] 自動更新およびアプリのトリガーを設置中...');
     }
-    
-    const allTriggers = ScriptApp.getProjectTriggers();
 
-    // ① updater自身の「毎日深夜3時」の自動更新トリガー
-    const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
-    if (!hasUpdateTrigger) {
-      ScriptApp.newTrigger('checkAndExecuteUpdate')
-        .timeBased()
-        .everyDays(1)
-        .atHour(3)
-        .create();
-      Logger.log("🟢 自動更新トリガー（毎日深夜3時）を設置しました。");
-    }
-
-    // ② merged.gs側からアプリ固有のトリガー設定を動的作成
-    if (typeof getAppTriggerConfig === 'function') {
-      const appTriggers = getAppTriggerConfig();
-      
-      if (Array.isArray(appTriggers)) {
-        appTriggers.forEach(config => {
-          const alreadyExists = allTriggers.some(t => t.getHandlerFunction() === config.functionName);
-          
-          if (!alreadyExists && config.functionName && Array.isArray(config.methods)) {
-            let builder = ScriptApp.newTrigger(config.functionName).timeBased();
-            
-            config.methods.forEach(method => {
-              if (typeof builder[method.name] === 'function') {
-                builder = builder[method.name].apply(builder, method.args || []);
-              }
-            });
-            
-            builder.create();
-            Logger.log(`🟢 アプリトリガー [${config.functionName}] を設置しました。`);
-          }
-        });
-      }
-    }
+    setupProjectTriggers();
 
     // ----------------------------------------------------
     // 結果発表
@@ -313,24 +199,160 @@ function createDeployAndTrigger(e){
     let successMessage = '🎉 アプリの公開とすべてのトリガー設定が完了しました！\n\n';
     if (deployedData && deployedData.entryPoints && deployedData.entryPoints.length > 0) {
       successMessage += `🔗 生成された公開URL:\n${deployedData.entryPoints[0].webApp.url}`;
-    } else if (existingDeployId) {
+    } else if (deployedData && deployedData.deploymentId) {
+      // 既存デプロイが更新されたケース
       successMessage += `🔗 公開URL（既存）が最新コードに更新されました。\nシステム管理メニューの「現在の公開状況を確認する」からURLを取得できます。`;
     } else {
       successMessage += '（※すでに公開済みのWebアプリURLが維持されています）';
     }
     
-    // 判定による出し分け
     if (isTriggered) {
       Logger.log(`✅ [自動実行完了] ${successMessage.replace(/\n/g, ' ')}`);
     } else if (ui) {
       ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
     }
 
-  } catch (e) {
+  } catch (err) {
     if (isTriggered) {
-      Logger.log('❌ [自動実行エラー] 処理中にエラーが発生しました:\n' + e.toString());
+      Logger.log('❌ [自動実行エラー] 処理中にエラーが発生しました:\n' + err.toString());
     } else if (ui) {
-      ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
+      ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + err.toString(), ui.ButtonSet.OK);
+    }
+  }
+}
+
+/**
+ * 【機能1】デプロイ作業（新しい版の作成、およびデプロイの作成・更新）
+ * @param {string} scriptId - スクリプトID
+ * @param {string} token - OAuthトークン
+ * @return {Object} デプロイ結果のデータオブジェクト（既存更新時は、擬似的に既存IDを含めて返却）
+ */
+function executeDeployment(scriptId, token) {
+  // 1. 新しい「版（バージョン）」を必ず作成する
+  const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
+  const createVersion = UrlFetchApp.fetch(versionUrl, {
+    method: "post",
+    headers: { "Authorization": "Bearer " + token },
+    contentType: "application/json",
+    payload: JSON.stringify({ "description": `Deploy via Update System (${CURRENT_VERSION})` }),
+    muteHttpExceptions: true
+  });
+  
+  let vNum = 1;
+  if (createVersion.getResponseCode() === 200) {
+    vNum = JSON.parse(createVersion.getContentText()).versionNumber;
+    Logger.log(`🟢 新しい版 (版 ${vNum}) を作成しました。`);
+  } else {
+    throw new Error("新しい版の作成に失敗しました: " + createVersion.getContentText());
+  }
+  
+  // 既存の本物デプロイがあるかチェック
+  const deployUrl = `https://script.googleapis.com/v1/projects/${scriptId}/deployments`;
+  const getDeploy = UrlFetchApp.fetch(deployUrl, { method: "get", headers: { "Authorization": "Bearer " + token }, muteHttpExceptions: true });
+  
+  let existingDeployId = null;
+  if (getDeploy.getResponseCode() === 200) {
+    const deployData = JSON.parse(getDeploy.getContentText());
+    if (deployData.deployments) {
+      const realDeploy = deployData.deployments.find(d => 
+        d.deploymentConfig && 
+        d.deploymentConfig.manifestFileName === "appsscript" && 
+        d.updateTime !== "1970-01-01T00:00:00Z"
+      );
+      if (realDeploy) existingDeployId = realDeploy.deploymentId;
+    }
+  }
+  
+  let deployedData = null;
+  
+  if (existingDeployId) {
+    // 既存デプロイがある場合は、新しい版(vNum)で既存デプロイを更新(PUT)する
+    const updateDeployUrl = `${deployUrl}/${existingDeployId}`;
+    const updateResponse = UrlFetchApp.fetch(updateDeployUrl, {
+      method: "put",
+      headers: { "Authorization": "Bearer " + token },
+      contentType: "application/json",
+      payload: JSON.stringify({
+        "deploymentConfig": {
+          "versionNumber": vNum,
+          "manifestFileName": "appsscript",
+          "description": `Updated to version ${vNum}`
+        }
+      }),
+      muteHttpExceptions: true
+    });
+    
+    if (updateResponse.getResponseCode() === 200) {
+      deployedData = JSON.parse(updateResponse.getContentText());
+      // APIのレスポンス構造により deploymentId が直下にない場合を考慮し、明示的に付与
+      if (!deployedData.deploymentId) deployedData.deploymentId = existingDeployId;
+      Logger.log(`🟢 既存のデプロイ [${existingDeployId}] を 新しい版 ${vNum} に更新しました。`);
+    } else {
+      throw new Error("デプロイの更新に失敗しました: " + updateResponse.getContentText());
+    }
+  } else {
+    // 無ければ新規デプロイ(POST)
+    const deployResponse = UrlFetchApp.fetch(deployUrl, {
+      method: "post",
+      headers: { "Authorization": "Bearer " + token },
+      contentType: "application/json",
+      payload: JSON.stringify({
+        "versionNumber": vNum,
+        "manifestFileName": "appsscript",
+        "description": "Initial production deploy"
+      }),
+      muteHttpExceptions: true
+    });
+    
+    if (deployResponse.getResponseCode() === 200) {
+      deployedData = JSON.parse(deployResponse.getContentText());
+      Logger.log("🟢 初代デプロイを樹立しました。");
+    } else {
+      throw new Error("デプロイの作成に失敗しました: " + deployResponse.getContentText());
+    }
+  }
+
+  return deployedData;
+}
+
+/**
+ * 【機能2】トリガー作成作業
+ */
+function setupProjectTriggers() {
+  const allTriggers = ScriptApp.getProjectTriggers();
+
+  // ① updater自身の「毎日深夜3時」の自動更新トリガー
+  const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
+  if (!hasUpdateTrigger) {
+    ScriptApp.newTrigger('checkAndExecuteUpdate')
+      .timeBased()
+      .everyDays(1)
+      .atHour(3)
+      .create();
+    Logger.log("🟢 自動更新トリガー（毎日深夜3時）を設置しました。");
+  }
+
+  // ② merged.gs側からアプリ固有のトリガー設定を動的作成
+  if (typeof getAppTriggerConfig === 'function') {
+    const appTriggers = getAppTriggerConfig();
+    
+    if (Array.isArray(appTriggers)) {
+      appTriggers.forEach(config => {
+        const alreadyExists = allTriggers.some(t => t.getHandlerFunction() === config.functionName);
+        
+        if (!alreadyExists && config.functionName && Array.isArray(config.methods)) {
+          let builder = ScriptApp.newTrigger(config.functionName).timeBased();
+          
+          config.methods.forEach(method => {
+            if (typeof builder[method.name] === 'function') {
+              builder = builder[method.name].apply(builder, method.args || []);
+            }
+          });
+          
+          builder.create();
+          Logger.log(`🟢 アプリトリガー [${config.functionName}] を設置しました。`);
+        }
+      });
     }
   }
 }
