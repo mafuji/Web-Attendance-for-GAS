@@ -8,9 +8,19 @@ const CURRENT_VERSION = "v1.0.0-beta.3"; // アップデート後にここも自
 // ==========================================
 // アプリごとの固有設定（※アプリに応じて書き換える）
 // ==========================================
-// 💡 prdフォルダ内の階層構造に合わせて、ディレクトリ名も含めて指定します
 const TARGET_APP_DIR = "controller-app"; // controller-app の場合はここを書き換える
 const TARGET_FILE = "merged.js";
+
+/**
+ * 共通トースト通知ヘルパー
+ */
+function showToast(message, title = '⚙️ システム') {
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(message, title);
+  } catch(e) {
+    Logger.log(`[Toast] ${title}: ${message}`);
+  }
+}
 
 /**
  * アップデートチェック＆実行のメイン関数
@@ -19,7 +29,6 @@ function checkAndExecuteUpdate() {
   const url = getGitHubApiUrl();
   const token = PropertiesService.getScriptProperties().getProperty("GH_TOKEN");
   
-  // GitHub APIを叩く際は、トークンがあればヘッダーに乗せてIP制限（レートリミット）を回避
   const response = UrlFetchApp.fetch(url, { 
     "muteHttpExceptions": true,
     "headers": token ? { "Authorization": "token " + token } : {}
@@ -47,24 +56,16 @@ function checkAndExecuteUpdate() {
   if (latestVersion !== CURRENT_VERSION) {
     Logger.log("新バージョンを検知しました。アップデート処理を開始します...");
     
-    // ----------------------------------------------------
-    // 【改修点1】新しい統合ソースコード(.js)をダウンロード
-    // ----------------------------------------------------
     const rawCode = fetchFromGitHub(latestVersion, TARGET_FILE);
     if (!rawCode) return;
 
-    // ----------------------------------------------------
-    // 【改修点2】新しい設定マニフェスト(.json)をダウンロード
-    // ----------------------------------------------------
     const rawManifest = fetchFromGitHub(latestVersion, "appsscript.json");
     if (!rawManifest) return;
     
-    // 3. 自身のコードと設定ファイルを新しいもので上書き
     const success = updateProjectFiles(rawCode, rawManifest, latestVersion);
     
     if (success) {
       Logger.log(`🎉 バージョン ${latestVersion} へのアップデートが正常に完了しました！`);
-      Logger.log("※画面をリロードするか、一度スクリプトエディタを閉じて開き直してください。");
     }
   } else {
     Logger.log("すでに最新の状態です。");
@@ -87,26 +88,22 @@ function getGitHubApiUrl() {
 }
 
 /**
- * 【改修点3】環境に応じて、GitHubまたはjsDelivrから各種アセットファイル（JS/JSON）を安全にダウンロードする
+ * 環境に応じて、GitHubまたはjsDelivrから各種アセットファイルを安全にダウンロードする
  */
 function fetchFromGitHub(version, fileName) {
   const envMode = PropertiesService.getScriptProperties().getProperty("ENV_MODE");
   let downloadUrl = "";
   let options = { "muteHttpExceptions": true };
 
-  // 💡 prd/アプリ名/ファイル名 の形に新パスを組み立てる
   const remotePath = `prd/${TARGET_APP_DIR}/${fileName}`;
 
   if (envMode === "development") {
-    // 【開発モード】キャッシュのないGitHub rawから直接取得（トークンを使用）
     downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${version}/${remotePath}`;
-    
     const token = PropertiesService.getScriptProperties().getProperty("GH_TOKEN");
     if (token) {
       options["headers"] = { "Authorization": "token " + token };
     }
   } else {
-    // 【本番モード】回数制限なしの無敵のCDN（jsDelivr）から高速取得
     downloadUrl = `https://cdn.jsdelivr.net/gh/${GITHUB_USER}/${GITHUB_REPO}@${version}/${remotePath}`;
   }
 
@@ -121,16 +118,12 @@ function fetchFromGitHub(version, fileName) {
 }
 
 /**
- * 【改修点4】Apps Script API を叩いて、プロジェクト内のファイルを一括書き換え ＋ スマート自動デプロイ
+ * Apps Script API を叩いて、プロジェクト内のファイルを一括書き換え
  */
 function updateProjectFiles(newCode, newManifest, latestVersion) {
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
-  const envMode = PropertiesService.getScriptProperties().getProperty("ENV_MODE");
   
-  // ====================================================
-  // 1. 現在のプロジェクト構成（ファイル一覧）を取得
-  // ====================================================
   const getUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
   const getResponse = UrlFetchApp.fetch(getUrl, {
     method: "get",
@@ -146,17 +139,12 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   const projectContent = JSON.parse(getResponse.getContentText());
   let mergedFileExists = false;
   
-  // ====================================================
-  // 2. 各ファイルの書き換え処理（JSおよびappsscript.jsonの反映）
-  // ====================================================
   projectContent.files = projectContent.files.map(file => {
-    // ① merged.js の上書き
     if (file.name === "merged") {
       file.source = newCode;
       mergedFileExists = true;
     }
     
-    // ② updater.js の CURRENT_VERSION の書き換え
     if (file.name === "updater") {
       file.source = file.source.replace(
         /const CURRENT_VERSION = ".*?";/,
@@ -164,10 +152,8 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
       );
     }
     
-    // ③ appsscript.json (マニフェスト) をGitHubの内容でそのまま完全同期
     if (file.name === "appsscript") {
       try {
-        // JSONとして正しくパースできるか最低限のチェックだけして、そのまま文字列として注入
         JSON.parse(newManifest); 
         file.source = newManifest;
         Logger.log("--- [マニフェスト同期] GitHub上のappsscript.jsonをそのまま適用しました ---");
@@ -186,9 +172,6 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
     });
   }
   
-  // ====================================================
-  // 3. 変更した構成をAPIで一括プッシュ（保存）
-  // ====================================================
   const putUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
   const putResponse = UrlFetchApp.fetch(putUrl, {
     method: "put",
@@ -205,143 +188,85 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   
   Logger.log("--- コードおよびマニフェストの書き換えが成功しました。続いて自動デプロイを開始します ---");
 
-  // ====================================================
-  // 4〜7. デプロイ作成処理
-  // ====================================================
-  // (※元のコードと完全に同一のため、ここの中身の記述は省略します)
+  // デプロイとトリガーの作成・更新へ進む
+  createDeployAndTrigger();
   
   return true;
 }
 
 /**
- * ============================================================================
- * 基盤システム（枠組み・インターフェース制御部）
- * ============================================================================
+ * デプロイとトリガー作成（および既存デプロイの更新）
  */
-
-/**
- * スプレッドシートが開かれたときに自動実行される関数（基盤側で一元管理）
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  
-  // 💡 まずはベースとなる「アプリメニュー」の看板を作成
-  const menu = ui.createMenu('アプリメニュー');
-
-  // ----------------------------------------------------
-  // 1. 【メイン処理】merged.gs 側からメニューデータを吸い上げて合流
-  // ----------------------------------------------------
-  try {
-    // merged.gs 側に、約束の関数「getAppMenuConfig」が存在するか確認
-    if (typeof getAppMenuConfig === 'function') {
-      const appMenus = getAppMenuConfig();
-      
-      // 配列で届いたメニューデータを安全に1つずつマッピング
-      if (Array.isArray(appMenus)) {
-        appMenus.forEach(item => {
-          if (item.type === "item" && item.name && item.functionName) {
-            menu.addItem(item.name, item.functionName);
-          } else if (item.type === "separator") {
-            menu.addSeparator();
-          }
-        });
-      }
-    }
-  } catch (e) {
-    // 💡 万が一 merged 側が壊れていて吸い出しに失敗しても、ログに留めて処理を続行！
-    Logger.log("⚠️ アプリ固有メニューの取得に失敗しました: " + e.toString());
-  }
-
-  // アプリメニューとシステム管理の境界線
-  menu.addSeparator();
-
-  // ----------------------------------------------------
-  // 2. 【固定処理】updater 自身が提供する必須のシステム管理メニュー
-  // ----------------------------------------------------
-  menu.addSubMenu(
-    ui.createMenu('🛠️ システム管理')
-      .addItem('🚀 アプリを公開する', 'menu_setupInitialDeploymentAndTriggers')
-      .addItem('📄 現在の公開状況を確認する', 'menu_checkCurrentDeploymentStatus') // 💡 追加！
-      .addSeparator()
-      .addItem('🔄 修正パッチを適用する', 'menu_forceExecuteUpdate')
-      .addSeparator()
-      .addItem('🛑 アプリの公開を停止する', 'menu_terminateSystem')
-  );
-
-  // 画面に一括反映
-  menu.addToUi();
-}
-
-/**
- * ============================================================================
- * メニューボタンに対応するプレースホルダー関数（中身は後ほど実装）
- * ============================================================================
- */
-
-/**
- * 1. 「🚀 アプリを公開する」の実装
- */
-function menu_setupInitialDeploymentAndTriggers() {
-  const ui = SpreadsheetApp.getUi();
+function createDeployAndTrigger(){
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
-  
-  const response = ui.alert(
-    'アプリの公開（初回セットアップ）',
-    'Webアプリを公開し、自動更新を含むすべての定期実行トリガーを設置します。よろしいですか？\n（※初回実行時のみ、Googleによるアクセス権限の承認が必要です）',
-    ui.ButtonSet.YES_NO
-  );
-  
-  if (response !== ui.Button.YES) {
-    return;
-  }
-  
-  // 画面右下にローディング通知を表示
-  const toast = (msg) => SpreadsheetApp.getActiveSpreadsheet().toast(msg, '⚙️ セットアップ');
+  const ui = SpreadsheetApp.getUi(); // スコープバグ修正
   
   try {
-    // ----------------------------------------------------
-    // タスク1: 最新の「版」を作成して、初代デプロイを樹立する
-    // ----------------------------------------------------
-    toast('最新のコードでWebアプリを公開中...');
+    showToast('最新のコードでWebアプリを公開中...', '⚙️ セットアップ');
     
-    // 既存の本物デプロイがあるかチェック（2回押しによる二重デプロイ防止）
+    // 1. 新しい「版（バージョン）」を必ず作成する
+    const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
+    const createVersion = UrlFetchApp.fetch(versionUrl, {
+      method: "post",
+      headers: { "Authorization": "Bearer " + token },
+      contentType: "application/json",
+      payload: JSON.stringify({ "description": `Deploy via Update System (${CURRENT_VERSION})` }),
+      muteHttpExceptions: true
+    });
+    
+    let vNum = 1;
+    if (createVersion.getResponseCode() === 200) {
+      vNum = JSON.parse(createVersion.getContentText()).versionNumber;
+      Logger.log(`🟢 新しい版 (版 ${vNum}) を作成しました。`);
+    } else {
+      throw new Error("新しい版の作成に失敗しました: " + createVersion.getContentText());
+    }
+    
+    // 既存の本物デプロイがあるかチェック
     const deployUrl = `https://script.googleapis.com/v1/projects/${scriptId}/deployments`;
     const getDeploy = UrlFetchApp.fetch(deployUrl, { method: "get", headers: { "Authorization": "Bearer " + token }, muteHttpExceptions: true });
     
-    let hasRealDeploy = false;
+    let existingDeployId = null;
     if (getDeploy.getResponseCode() === 200) {
       const deployData = JSON.parse(getDeploy.getContentText());
       if (deployData.deployments) {
-        hasRealDeploy = deployData.deployments.some(d => 
+        const realDeploy = deployData.deployments.find(d => 
           d.deploymentConfig && 
           d.deploymentConfig.manifestFileName === "appsscript" && 
           d.updateTime !== "1970-01-01T00:00:00Z"
         );
+        if (realDeploy) existingDeployId = realDeploy.deploymentId;
       }
     }
     
     let deployedData = null;
     
-    if (hasRealDeploy) {
-      Logger.log("すでに公開済みのデプロイが存在するため、新規作成はスキップします。");
-    } else {
-      // 履歴コミットにあたる「新バージョン(版)」を作成
-      const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
-      const createVersion = UrlFetchApp.fetch(versionUrl, {
-        method: "post",
+    if (existingDeployId) {
+      // 【仕様改善】既存デプロイがある場合は、新しい版(vNum)で既存デプロイを更新(PUT)する
+      const updateDeployUrl = `${deployUrl}/${existingDeployId}`;
+      const updateResponse = UrlFetchApp.fetch(updateDeployUrl, {
+        method: "put",
         headers: { "Authorization": "Bearer " + token },
         contentType: "application/json",
-        payload: JSON.stringify({ "description": "Initial deploy via menu button" }),
+        payload: JSON.stringify({
+          "deploymentConfig": {
+            "versionNumber": vNum,
+            "manifestFileName": "appsscript",
+            "description": `Updated to version ${vNum}`
+          }
+        }),
         muteHttpExceptions: true
       });
       
-      let vNum = 1;
-      if (createVersion.getResponseCode() === 200) {
-        vNum = JSON.parse(createVersion.getContentText()).versionNumber;
+      if (updateResponse.getResponseCode() === 200) {
+        deployedData = JSON.parse(updateResponse.getContentText());
+        Logger.log(`🟢 既存のデプロイ [${existingDeployId}] を 新しい版 ${vNum} に更新しました。`);
+      } else {
+        throw new Error("デプロイの更新に失敗しました: " + updateResponse.getContentText());
       }
-      
-      // 【仕様3】無ければ新規デプロイ(POST)
+    } else {
+      // 無ければ新規デプロイ(POST)
       const deployResponse = UrlFetchApp.fetch(deployUrl, {
         method: "post",
         headers: { "Authorization": "Bearer " + token },
@@ -363,9 +288,9 @@ function menu_setupInitialDeploymentAndTriggers() {
     }
 
     // ----------------------------------------------------
-    // タスク2: 全トリガーの一括設置（重複チェック付き）
+    // タスク2: 全トリガーの一括設置
     // ----------------------------------------------------
-    toast('自動更新およびアプリのトリガーを設置中...');
+    showToast('自動更新およびアプリのトリガーを設置中...', '⚙️ セットアップ');
     const allTriggers = ScriptApp.getProjectTriggers();
 
     // ① updater自身の「毎日深夜3時」の自動更新トリガー
@@ -374,36 +299,31 @@ function menu_setupInitialDeploymentAndTriggers() {
       ScriptApp.newTrigger('checkAndExecuteUpdate')
         .timeBased()
         .everyDays(1)
-        .atHour(3) // 💡 深夜3時〜4時の間に実行
+        .atHour(3)
         .create();
       Logger.log("🟢 自動更新トリガー（毎日深夜3時）を設置しました。");
     }
 
-    // ② merged.gs側からアプリ固有のトリガー設定を吸い上げて動的作成
+    // ② merged.gs側からアプリ固有のトリガー設定を動的作成
     if (typeof getAppTriggerConfig === 'function') {
       const appTriggers = getAppTriggerConfig();
       
       if (Array.isArray(appTriggers)) {
         appTriggers.forEach(config => {
-          // 重複チェック
           const alreadyExists = allTriggers.some(t => t.getHandlerFunction() === config.functionName);
           
           if (!alreadyExists && config.functionName && Array.isArray(config.methods)) {
-            
-            // 1. まずベースとなるタイムベースドトリガーの原型を作る
             let builder = ScriptApp.newTrigger(config.functionName).timeBased();
             
-            // 2. merged側から指定されたメソッド（everyMinutes等）を動的に数珠つなぎで実行する
             config.methods.forEach(method => {
               if (typeof builder[method.name] === 'function') {
-                // 💡 例： builder["everyMinutes"].apply(builder, [1]) と同義になり、GASのメソッドが動的に発火します
+                // メソッドチェーンの戻り値を常に安全に代入
                 builder = builder[method.name].apply(builder, method.args || []);
               }
             });
             
-            // 3. 最後にトリガーを確定（create）
             builder.create();
-            Logger.log(`🟢 アプリトリガー [${config.functionName}] を動的メソッドチェーンにより設置しました。`);
+            Logger.log(`🟢 アプリトリガー [${config.functionName}] を設置しました。`);
           }
         });
       }
@@ -415,6 +335,9 @@ function menu_setupInitialDeploymentAndTriggers() {
     let successMessage = '🎉 アプリの公開とすべてのトリガー設定が完了しました！\n\n';
     if (deployedData && deployedData.entryPoints && deployedData.entryPoints.length > 0) {
       successMessage += `🔗 生成された公開URL:\n${deployedData.entryPoints[0].webApp.url}`;
+    } else if (existingDeployId) {
+      // 更新時はURLがすでにわかっている、または既存デプロイ一覧から再取得可能
+      successMessage += `🔗 公開URL（既存）が最新コードに更新されました。\nシステム管理メニューの「現在の公開状況を確認する」からURLを取得できます。`;
     } else {
       successMessage += '（※すでに公開済みのWebアプリURLが維持されています）';
     }
@@ -424,6 +347,64 @@ function menu_setupInitialDeploymentAndTriggers() {
   } catch (e) {
     ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
   }
+}
+
+/**
+ * スプレッドシートが開かれたときに自動実行される関数
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  const menu = ui.createMenu('アプリメニュー');
+
+  try {
+    if (typeof getAppMenuConfig === 'function') {
+      const appMenus = getAppMenuConfig();
+      if (Array.isArray(appMenus)) {
+        appMenus.forEach(item => {
+          if (item.type === "item" && item.name && item.functionName) {
+            menu.addItem(item.name, item.functionName);
+          } else if (item.type === "separator") {
+            menu.addSeparator();
+          }
+        });
+      }
+    }
+  } catch (e) {
+    Logger.log("⚠️ アプリ固有メニューの取得に失敗しました: " + e.toString());
+  }
+
+  menu.addSeparator();
+
+  menu.addSubMenu(
+    ui.createMenu('🛠️ システム管理')
+      .addItem('🚀 アプリを公開する', 'menu_setupInitialDeploymentAndTriggers')
+      .addItem('📄 現在の公開状況を確認する', 'menu_checkCurrentDeploymentStatus')
+      .addSeparator()
+      .addItem('🔄 修正パッチを適用する', 'menu_forceExecuteUpdate')
+      .addSeparator()
+      .addItem('🛑 アプリの公開を停止する', 'menu_terminateSystem')
+  );
+
+  menu.addToUi();
+}
+
+/**
+ * 1. 「🚀 アプリを公開する」の実装
+ */
+function menu_setupInitialDeploymentAndTriggers() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const response = ui.alert(
+    'アプリの公開（初回セットアップ）',
+    'Webアプリを公開し、自動更新を含むすべての定期実行トリガーを設置します。よろしいですか？\n（※初回実行時のみ、Googleによるアクセス権限の承認が必要です）',
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (response !== ui.Button.YES) {
+    return;
+  }
+  
+  createDeployAndTrigger();
 }
 
 /**
@@ -442,17 +423,11 @@ function menu_forceExecuteUpdate() {
     return;
   }
   
-  // 画面右下に通知
-  const toast = (msg) => SpreadsheetApp.getActiveSpreadsheet().toast(msg, '⚙️ パッチ適用');
-  toast('最新パッチを適用中（GitHub通信＆デプロイを実行）...');
+  showToast('最新パッチを適用中（GitHub通信＆デプロイを実行）...', '⚙️ パッチ適用');
 
   try {
-    // 💡 すでに完成している自動更新のコア関数をそのまま1行呼び出すだけ！
-    // これにより、全く同じ通信・置換・デプロイロジックが安全に走ります。
     checkAndExecuteUpdate();
-
     ui.alert('アップデート完了', '🎉 最新の修正パッチの適用に成功しました！\n\nWebアプリのURLは変わっていません。画面をリロードしてご確認ください。', ui.ButtonSet.OK);
-
   } catch (e) {
     ui.alert('❌ パッチ適用失敗', 'エラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
   }
@@ -466,7 +441,6 @@ function menu_terminateSystem() {
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
   
-  // 誤操作防止のため、2回確認を入れます
   const res1 = ui.alert(
     '⚠️ 警告：アプリの公開停止',
     '現在公開中のWebアプリURLを無効化し、自動更新を含むすべての定期実行トリガーを削除します。\n本当に実行してもよろしいですか？',
@@ -481,24 +455,16 @@ function menu_terminateSystem() {
   );
   if (res2 !== ui.Button.YES) return;
 
-  const toast = (msg) => SpreadsheetApp.getActiveSpreadsheet().toast(msg, '🛑 公開停止処理');
+  showToast('すべての定期実行トリガーを削除中...', '🛑 公開停止処理');
   
   try {
-    // ----------------------------------------------------
-    // STEP 1. すべてのトリガーを完全に削除
-    // ----------------------------------------------------
-    toast('すべての定期実行トリガーを削除中...');
     const allTriggers = ScriptApp.getProjectTriggers();
     allTriggers.forEach(trigger => {
       ScriptApp.deleteTrigger(trigger);
       Logger.log(`🗑️ トリガーを削除しました: ${trigger.getHandlerFunction()}`);
     });
-    Logger.log("🟢 すべてのトリガーの削除が完了しました。");
 
-    // ----------------------------------------------------
-    // STEP 2. 本物のデプロイをすべてループ処理でアーカイブ（削除）
-    // ----------------------------------------------------
-    toast('公開中のWebアプリURLを無効化中...');
+    showToast('公開中のWebアプリURLを無効化中...', '🛑 公開停止処理');
     const deployUrl = `https://script.googleapis.com/v1/projects/${scriptId}/deployments`;
     
     const getDeployResponse = UrlFetchApp.fetch(deployUrl, {
@@ -511,14 +477,11 @@ function menu_terminateSystem() {
       const deployData = JSON.parse(getDeployResponse.getContentText());
       
       if (deployData.deployments && deployData.deployments.length > 0) {
-        // 1970年のテストデプロイ以外（＝本物のデプロイ）を抽出
         const trueDeployments = deployData.deployments.filter(d => d.updateTime !== "1970-01-01T00:00:00Z");
         
         if (trueDeployments.length > 0) {
           trueDeployments.forEach(d => {
             const deleteUrl = `${deployUrl}/${d.deploymentId}`;
-            
-            // 💡 該当のデプロイIDに対して DELETE リクエストを送信して消し去る！
             const deleteResponse = UrlFetchApp.fetch(deleteUrl, {
               method: "delete",
               headers: { "Authorization": "Bearer " + token },
@@ -531,17 +494,12 @@ function menu_terminateSystem() {
               Logger.log(`❌ デプロイ [${d.deploymentId}] の削除に失敗: ` + deleteResponse.getContentText());
             }
           });
-        } else {
-          Logger.log("削除対象となるアクティブな本物デプロイはありませんでした。");
         }
       }
     } else {
       throw new Error("デプロイ一覧の取得に失敗しました: " + getDeployResponse.getContentText());
     }
 
-    // ----------------------------------------------------
-    // 結果発表
-    // ----------------------------------------------------
     ui.alert(
       '公開停止完了',
       '🛑 アプリの公開停止および後片付けがすべて完了しました！\n\n・WebアプリURLは完全に無効化されました。\n・すべての定期トリガーが消去されました。',
@@ -561,13 +519,9 @@ function menu_checkCurrentDeploymentStatus() {
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
   
-  const toast = (msg) => SpreadsheetApp.getActiveSpreadsheet().toast(msg, '🔎 状況確認');
-  toast('現在のデプロイおよびトリガーの状態を調査中...');
+  showToast('現在のデプロイおよびトリガーの状態を調査中...', '🔎 状況確認');
 
   try {
-    // ----------------------------------------------------
-    // 1. デプロイ状況の取得
-    // ----------------------------------------------------
     const deployUrl = `https://script.googleapis.com/v1/projects/${scriptId}/deployments`;
     const getDeployResponse = UrlFetchApp.fetch(deployUrl, {
       method: "get",
@@ -582,7 +536,6 @@ function menu_checkCurrentDeploymentStatus() {
       const deployData = JSON.parse(getDeployResponse.getContentText());
       
       if (deployData.deployments && deployData.deployments.length > 0) {
-        // 💡 1970年のテストデプロイ以外（本物）を一本釣り
         const trueDeploy = deployData.deployments.find(d => 
           d.deploymentConfig && 
           d.deploymentConfig.manifestFileName === "appsscript" && 
@@ -608,16 +561,12 @@ function menu_checkCurrentDeploymentStatus() {
       throw new Error("デプロイ情報の取得に失敗しました。");
     }
 
-    // ----------------------------------------------------
-    // 2. トリガー稼働状況の取得
-    // ----------------------------------------------------
     const allTriggers = ScriptApp.getProjectTriggers();
     let triggerInfoText = "";
     
     const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
     triggerInfoText += hasUpdateTrigger ? "・🔄 自動更新システム: 🟢 稼働中（毎日深夜）\n" : "・🔄 自動更新システム: 🛑 停止中\n";
     
-    // merged側からトリガー設定が取得できれば、それらも稼働しているかチェック
     if (typeof getAppTriggerConfig === 'function') {
       const appTriggers = getAppTriggerConfig();
       if (Array.isArray(appTriggers)) {
@@ -628,9 +577,6 @@ function menu_checkCurrentDeploymentStatus() {
       }
     }
 
-    // ----------------------------------------------------
-    // 3. 結果をダイアログで美しく表示
-    // ----------------------------------------------------
     let message = `【Webアプリの公開ステータス】\n${deployInfoText}\n\n` +
                   `【定期実行トリガーの稼働状況】\n${triggerInfoText}`;
                   
