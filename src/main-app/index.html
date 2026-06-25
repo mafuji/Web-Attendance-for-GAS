@@ -56,7 +56,7 @@
         <div class="expired-card">
           <div class="expired-icon">⚠️</div>
           <h2>セッションの有効期限切れ</h2>
-          <p>もう一度打刻用端末からQRコードを読み取ってアクセスしてください。</p>
+          <p>ブラウザをリロードしてください。</p>
         </div>
       </div>
 
@@ -79,7 +79,7 @@
                 <li class="menu-footer">
                   <span class="user-label">ログイン中：</span>
                   <span class="user-email">{{ email }}</span>
-                </li>
+                </li>                
               </ul>
             </nav>
           </transition>
@@ -88,11 +88,18 @@
 
       <!-- アプリ画面 -->
       <div id="app" v-if="isReady && !isSessionExpired">
-        <button @click="sendIn" v-show="!isIn" class="button-in">入室</button>
-        <button @click="sendOut" v-show="isIn" class="button-out">退室</button>
-      </div>
-      <div class="last-action" v-if="lastAction.time && !isSessionExpired">
-          前回の打刻：{{ lastAction.time }} （{{ lastAction.status }}）<br/>
+        <div class="user-info-box">
+          <span class="user-info-label">ユーザー：</span>
+          <span class="user-info-email">{{ name }} さん</span>
+        </div>
+
+        <div class="button-area">
+          <button @click="sendIn" v-show="!isIn" class="button-in">入室</button>
+          <button @click="sendOut" v-show="isIn" class="button-out">退室</button>
+        </div>
+        <div class="last-action" v-if="lastAction.time && !isSessionExpired">
+            前回の打刻：{{ lastAction.time }} （{{ lastAction.status }}）<br/>
+        </div>        
       </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/vue@3.1.5"></script>

@@ -6,7 +6,8 @@
         isIn: false,
         isAdmin: false,
         isMenuOpen: false, 
-        email: "",
+        email: "", // 💡 残す
+        name: "",  // 💡 追加
         sessionId: SERVER_SESSION_ID,
         requirePassword: requirePassword,
         isSessionExpired: false,
@@ -14,15 +15,18 @@
       }
     },
     async mounted() {
+      // 💡 2つの通信を同時にスタートさせる（並列呼び出し）
       this.fetchUserData();
+      this.checkAdmin();
     },
     methods: {
-      // ユーザー情報の取得（直呼び出し）
+      // ユーザー情報の取得
       fetchUserData() {
         google.script.run
-          .withFailureHandler(() => { this.isReady = true; })
+          .withFailureHandler(() => { this.checkReady(); })
           .withSuccessHandler(res => {
             this.email = res.email;
+            this.name = res.name;
             if (res.lastAction) {
               this.lastAction = {
                 time: res.lastAction.timestamp,
@@ -30,26 +34,34 @@
               };
               this.isIn = (res.lastAction.status === "IN");
             }
-            this.checkAdmin();
+            this.checkReady(); // 💡 終わったら準備完了チェックへ
           })
           .getStatusOfActiveUser();
       },
 
-      // 管理者判定（直呼び出し）
+      // 管理者判定
       checkAdmin() {
         google.script.run
+          .withFailureHandler(() => { this.checkReady(); })
           .withSuccessHandler(res => {
             this.isAdmin = res;
-            this.isReady = true; // すべてのデータが揃ってから表示
+            this.checkReady(); // 💡 終わったら準備完了チェックへ
           })
           .isAdmin();
+      },
+
+      // 💡 新設：両方のデータが揃ったら画面を表示する判定関数
+      checkReady() {
+        // email（UserDataの結果）と isAdmin の結果がどちらも取得できたら表示フラグを立てる
+        if ((this.email || this.isReady) && (this.isAdmin !== undefined)) {
+          this.isReady = true;
+        }
       },
 
       // パスワード認証を挟んだ打刻処理
       async send(status) {
         let password = null;
 
-        // 1. 入室（IN）のときだけパスワード入力を求める
         if (status === "IN" && requirePassword === true) {
           const { value: typedPassword } = await Swal.fire({
             title: 'パスワード入力',
@@ -71,12 +83,10 @@
             }
           });
 
-          // キャンセルされた場合は処理終了
           if (!typedPassword) return;
           password = typedPassword;
         }
 
-        // 2. 処理中ローディング表示
         Swal.fire({
           title: '処理中...',
           allowOutsideClick: false,
@@ -87,13 +97,11 @@
           }
         });
 
-        // 3. パスワード検証 ＆ 打刻リクエスト（直呼び出しのチェーン構成）
         const runner = google.script.run
           .withFailureHandler(e => {
             Swal.fire("エラー", "通信に失敗しました: " + e, "error");
           })
           .withSuccessHandler(res => {
-            // セッション切れのハンドリング
             if (res === null) {
               this.isSessionExpired = true;
               Swal.close();
@@ -103,25 +111,21 @@
             let displayTime = "";
 
             if (status === "IN" && requirePassword === true) {
-              // verifyPasswordAndInsert の結果オブジェクトを処理
               if (res.success === false) {
                 Swal.fire("認証失敗", res.message || "パスワードが正しくありません。", "error");
                 return;
               }
               displayTime = res.timestamp;
             } else {
-              // insertRecord の結果（直に日時文字列が返る）を処理
               displayTime = res;
             }
 
-            // 打刻成功時の画面反映
             this.isIn = (status === "IN");
             this.lastAction = {
               time: displayTime,
               status: status === "IN" ? "入室" : "退室"
             };
 
-            // 完了メッセージに差し替え
             Swal.fire({
               title: '完了',
               text: status === "IN" ? "入室を記録しました" : "退室を記録しました",
@@ -131,12 +135,9 @@
             });
           });
 
-        // 💡 状況に応じてGAS側の呼び出す関数と引数を出し分ける
         if (status === "IN" && requirePassword === true) {
-          // verifyPasswordAndInsert(status, sessionId, inputPassword) のシグネチャに合わせる
           runner.verifyPasswordAndInsert(status, this.sessionId, password);
         } else {
-          // insertRecord(status, sessionId) のシグネチャに合わせる
           runner.insertRecord(status, this.sessionId);
         }
       },
@@ -144,7 +145,6 @@
       sendIn() { this.send("IN"); },
       sendOut() { this.send("OUT"); },
 
-      // メニューアクション（ダッシュボード移動）
       openDashboard() {
         this.isMenuOpen = false;
         google.script.run
@@ -154,7 +154,6 @@
           .getAppUrl();
       },
 
-      // ログアウト処理
       logout() {
         this.isMenuOpen = false;
         Swal.fire({
