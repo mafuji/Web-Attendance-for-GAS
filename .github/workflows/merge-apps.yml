@@ -60,14 +60,13 @@ jobs:
               if (file.endsWith('.js')) {
                 gsContent += `\n// --- File: ${file} ---\n` + content + '\n';
               } else if (file.endsWith('.html')) {
-                // 拡張子を除いたファイル名をキーにする
+                // 拡張子を除いたファイル名をキーにする（ここで「update_alert」がキーになります）
                 const key = path.basename(file, '.html');
                 htmlTemplates[key] = content;
               }
             });
 
             // 2. getHtmlTemplate 内の const templates = {} を置換する
-            // テンプレートをJSON文字列化して、エスケープや改行を安全に処理
             const jsonTemplates = JSON.stringify(htmlTemplates, null, 2);
             const targetPattern = 'const templates = {}';
             
@@ -83,13 +82,12 @@ jobs:
             console.log(`Successfully created ${outputPath}`);
 
             // ====================================================
-            // 💡 共通の updater.js をアプリごとにカスタマイズして配置
+            // 共通の updater.js をアプリごとにカスタマイズして配置
             // ====================================================
             const sharedUpdaterPath = path.join(process.cwd(), 'src', 'shared', 'updater.js');
             if (fs.existsSync(sharedUpdaterPath)) {
               let updaterContent = fs.readFileSync(sharedUpdaterPath, 'utf8');
               
-              // TARGET_APP_DIR の部分を、現在の appDir ("main-app" や "controller-app") に置換
               updaterContent = updaterContent.replace(
                 /const TARGET_APP_DIR = ".*?";/,
                 `const TARGET_APP_DIR = "${appDir}";`
@@ -104,9 +102,9 @@ jobs:
           }
 
           // ====================================================
-          // 📢 【追加】共通の update-alert.html を各アプリに事前配布
+          // 📢 共通の update_alert.html を各アプリの src フォルダに物理コピー
           // ====================================================
-          const sharedAlertPath = path.join(process.cwd(), 'src', 'shared', 'update-alert.html');
+          const sharedAlertPath = path.join(process.cwd(), 'src', 'shared', 'update_alert.html');
           
           if (fs.existsSync(sharedAlertPath)) {
             const targetApps = ['main-app', 'controller-app'];
@@ -114,16 +112,17 @@ jobs:
             targetApps.forEach(app => {
               const targetDir = path.join(process.cwd(), 'src', app);
               if (fs.existsSync(targetDir)) {
-                const destPath = path.join(targetDir, 'update-alert.html');
+                // 各 src/アプリ名/ フォルダの直下に物理ファイルを配る
+                const destPath = path.join(targetDir, 'update_alert.html');
                 fs.copyFileSync(sharedAlertPath, destPath);
-                console.log(`🚀 [Shared Alert] Distributed update-alert.html to ${destPath}`);
+                console.log(`🚀 [Shared Alert] Distributed update_alert.html to ${destPath}`);
               }
             });
           } else {
-            console.log(`[Warning] Shared update-alert.html not found at ${sharedAlertPath}`);
+            console.log(`[Warning] Shared update_alert.html not found at ${sharedAlertPath}`);
           }
 
-          // 2つのアプリを実行（出力先ディレクトリは関数内で自動処理）
+          // 2つのアプリを実行（各src内にコピーされた後なので、merged.jsのtemplatesにも自動で取り込まれます）
           mergeApp('main-app', 'merged.js');
           mergeApp('controller-app', 'merged.js');
           EOF
@@ -133,11 +132,11 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # prdフォルダ全体の変更をステージングに対象変更
-          git add prd/
+          # 💡 src/ 側の各アプリに追加された update_alert.html も一緒にコミット対象に含める
+          git add src/ prd/
           
           if ! git diff --cached --quiet; then
-            git commit -m "chore: auto-generated merged GS, updater, and config files [skip ci]"
+            git commit -m "chore: auto-generated merged GS, updater, config, and update_alert files [skip ci]"
             git push origin ${GITHUB_REF_NAME}
           else
             echo "No changes to commit"
