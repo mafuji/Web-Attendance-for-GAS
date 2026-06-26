@@ -1,4 +1,4 @@
-# GAS 出退勤・入退室打刻ウェブアプリ
+## GAS 出退勤・入退室打刻ウェブアプリ
 
 出退勤や入退室を打刻して、出席率を管理・確認できるGoogle Apps Script（GAS）製のスプレッドシートバインド型ウェブアプリです。
 
@@ -8,7 +8,7 @@
 
 ## 📘 マニュアル
 詳細な設定や使い方は、下記のマニュアルをご確認ください。
-* [Web打刻システム マニュアルはこちら](https://sites.google.com/view/web-attendance-for-gas-manual/%E3%83%9B%E3%83%BC%E3%83%A0)
+* [Web入退室 マニュアルはこちら](https://sites.google.com/view/web-attendance-for-gas-manual/%E3%83%9B%E3%83%BC%E3%83%A0)
 
 ---
 
