@@ -1,0 +1,67 @@
+<div id="update-toast" style="
+  display: none; 
+  position: fixed; 
+  bottom: 20px; 
+  right: 20px; 
+  background-color: #1e293b; 
+  color: #ffffff; 
+  padding: 16px 20px; 
+  border-radius: 12px; 
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3); 
+  z-index: 99999; 
+  max-width: 280px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid #334155;
+  animation: slideInToast 0.3s ease-out;
+">
+  <div style="font-weight: bold; margin-bottom: 6px; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
+    ✨ アップデートがあります
+  </div>
+  <div id="update-toast-msg" style="color: #cbd5e1; margin-bottom: 12px;">
+    新しいバージョンが利用可能です。
+  </div>
+  <div style="text-align: right;">
+    <button onclick="location.reload();" style="
+      background-color: #2563eb; 
+      color: #ffffff; 
+      border: none; 
+      padding: 6px 14px; 
+      border-radius: 6px; 
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 12px;
+      transition: background-color 0.2s;
+    " onmouseover="this.style.backgroundColor='#1d4ed8'" onmouseout="this.style.backgroundColor='#2563eb'">
+      今すぐ更新
+    </button>
+  </div>
+</div>
+
+<style>
+@keyframes slideInToast {
+  from { transform: translateY(100px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+</style>
+
+<script>
+  window.addEventListener('load', function() {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.hasUpdate) {
+          const toast = document.getElementById('update-toast');
+          const msg = document.getElementById('update-toast-msg');
+          
+          msg.innerText = `新しいバージョン (${result.latestVersion}) が公開されました。アプリを正しく動作させるため、更新をお願いします。`;
+          
+          toast.style.display = 'block';
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error("アップデート確認エラー:", error);
+      })
+      .checkUpdateForHtml();
+  });
+</script>

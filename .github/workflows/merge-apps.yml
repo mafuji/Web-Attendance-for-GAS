@@ -103,6 +103,26 @@ jobs:
             }
           }
 
+          // ====================================================
+          // 📢 【追加】共通の update-alert.html を各アプリに事前配布
+          // ====================================================
+          const sharedAlertPath = path.join(process.cwd(), 'src', 'shared', 'update-alert.html');
+          
+          if (fs.existsSync(sharedAlertPath)) {
+            const targetApps = ['main-app', 'controller-app'];
+            
+            targetApps.forEach(app => {
+              const targetDir = path.join(process.cwd(), 'src', app);
+              if (fs.existsSync(targetDir)) {
+                const destPath = path.join(targetDir, 'update-alert.html');
+                fs.copyFileSync(sharedAlertPath, destPath);
+                console.log(`🚀 [Shared Alert] Distributed update-alert.html to ${destPath}`);
+              }
+            });
+          } else {
+            console.log(`[Warning] Shared update-alert.html not found at ${sharedAlertPath}`);
+          }
+
           // 2つのアプリを実行（出力先ディレクトリは関数内で自動処理）
           mergeApp('main-app', 'merged.js');
           mergeApp('controller-app', 'merged.js');
