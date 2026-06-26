@@ -23,41 +23,67 @@ function showToast(message, title = '⚙️ システム') {
 }
 
 /**
- * アップデートチェック＆実行のメイン関数
+ * バージョンチェックを行い、結果をUIに通知する（手動確認用）
  */
-function checkAndExecuteUpdate() {
-  // APIではなくraw.githubusercontentから直接version.jsonを落とす（Token不要・制限なし）
+function menu_checkVersionAndNotify() {
+  const ui = SpreadsheetApp.getUi();
+  showToast('GitHubから最新のバージョン情報を取得中...', '🔎 バージョン確認');
+
+  // GitHubのversion.jsonから最新情報を取得
   const url = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/src/shared/version.json`;
-  
   const response = UrlFetchApp.fetch(url, { "muteHttpExceptions": true });
   
   if (response.getResponseCode() !== 200) {
-    Logger.log(`バージョン情報の取得に失敗しました。ステータス: ${response.getResponseCode()}`);
+    ui.alert('❌ 確認失敗', `バージョン情報の取得に失敗しました。\nステータス: ${response.getResponseCode()}`, ui.ButtonSet.OK);
     return;
   }
   
   const resData = JSON.parse(response.getContentText());
   const latestVersion = resData.version;
-  
-  Logger.log(`現在のバージョン: ${CURRENT_VERSION} / 最新バージョン: ${latestVersion}`);
-  
+  const updateNotes = resData.description || "新機能の追加およびバグ修正"; // version.jsonに更新内容があれば表示
+
   if (latestVersion !== CURRENT_VERSION) {
-    Logger.log("新バージョンを検知しました。アップデート処理を開始します...");
+    // 新バージョンがある場合のUI通知
+    const alertMessage = `📢 新しいバージョンが利用可能です！\n\n` +
+                         `現在のバージョン: ${CURRENT_VERSION}\n` +
+                         `最新のバージョン: ${latestVersion}\n\n` +
+                         `【更新内容】\n${updateNotes}\n\n` +
+                         `今すぐアプリを最新版にアップデートしますか？\n` +
+                         `（※現在のWebアプリURLを維持したまま更新されます）`;
     
-    // コードとマニフェストを取得（こちらもAPIリミット対象外のRaw配信から取得）
+    const choice = ui.alert('🔄 アップデート通知', alertMessage, ui.ButtonSet.YES_NO);
+    
+    if (choice === ui.Button.YES) {
+      executeDirectUpdate(latestVersion);
+    }
+  } else {
+    // すでに最新の場合のUI通知
+    ui.alert('✅ 最新状態です', `ご利用中のバージョンは最新です。\n\n現在のバージョン: ${CURRENT_VERSION}`, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * ダイアログから直接呼び出されるアップデート実行関数
+ */
+function executeDirectUpdate(latestVersion) {
+  const ui = SpreadsheetApp.getUi();
+  showToast('最新プログラムをダウンロード中...', '⚙️ アプリ更新');
+
+  try {
+    // コードとマニフェストを取得
     const rawCode = fetchFromGitHub(latestVersion, TARGET_FILE);
-    if (!rawCode) return;
+    if (!rawCode) throw new Error(`${TARGET_FILE} の取得に失敗しました。`);
 
     const rawManifest = fetchFromGitHub(latestVersion, "appsscript.json");
-    if (!rawManifest) return;
+    if (!rawManifest) throw new Error("appsscript.json の取得に失敗しました。");
     
     const success = updateProjectFiles(rawCode, rawManifest, latestVersion);
     
     if (success) {
-      Logger.log(`🎉 バージョン ${latestVersion} へのアップデートが正常に完了しました！`);
+      ui.alert('🎉 アップデート完了', `バージョン ${latestVersion} への更新が正常に完了しました！\n\nWebアプリのURLは変わっていません。`, ui.ButtonSet.OK);
     }
-  } else {
-    Logger.log("すでに最新の状態です。");
+  } catch (e) {
+    ui.alert('❌ 更新失敗', 'アップデート処理中にエラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
   }
 }
 
@@ -66,8 +92,6 @@ function checkAndExecuteUpdate() {
  */
 function fetchFromGitHub(version, fileName) {
   const remotePath = `prd/${TARGET_APP_DIR}/${fileName}`;
-  
-  // API制限に引っかからない raw.githubusercontent を使用
   const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${version}/${remotePath}`;
 
   Logger.log(`[DL開始] 接続先: ${downloadUrl}`);
@@ -85,7 +109,7 @@ function fetchFromGitHub(version, fileName) {
  */
 function updateProjectFiles(newCode, newManifest, latestVersion) {
   const scriptId = ScriptApp.getScriptId();
-  const token = ScriptApp.getOAuthToken(); // GAS内部の認証トークン（GitHubとは無関係）
+  const token = ScriptApp.getOAuthToken();
   
   const getUrl = `https://script.googleapis.com/v1/projects/${scriptId}/content`;
   const getResponse = UrlFetchApp.fetch(getUrl, {
@@ -95,8 +119,7 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   });
   
   if (getResponse.getResponseCode() !== 200) {
-    Logger.log("現在のプロジェクト構成の取得に失敗しました。");
-    return false;
+    throw new Error("現在のプロジェクト構成の取得に失敗しました。");
   }
   
   const projectContent = JSON.parse(getResponse.getContentText());
@@ -145,13 +168,12 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   });
   
   if (putResponse.getResponseCode() !== 200) {
-    Logger.log("Apps Script APIへのコード書き込みに失敗しました: " + putResponse.getContentText());
-    return false;
+    throw new Error("Apps Script APIへのコード書き込みに失敗しました: " + putResponse.getContentText());
   }
   
   Logger.log("--- コードおよびマニフェストの書き換えが成功しました。続いて自動デプロイを開始します ---");
 
-  // デプロイとトリガーの作成・更新へ進む
+  // デプロイとアプリ用トリガーの作成・更新へ進む
   createDeployAndTrigger();
   
   return true;
@@ -159,76 +181,40 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
 
 /**
  * デプロイとトリガー作成（メインコントロール関数）
- * @param {Object} [e] - トリガー実行時に渡されるイベントオブジェクト
  */
-function createDeployAndTrigger(e) {
-  // 引数 e の有無で自動実行（トリガー）か手動実行かを判別
-  const isTriggered = !!(e && (e['trigger-uid'] || e.authMode || e.triggerUid));
+function createDeployAndTrigger() {
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
-  
-  // 手動実行の時だけUIを取得（自動実行時のUIエラー予防）
-  const ui = !isTriggered ? SpreadsheetApp.getUi() : null; 
+  const ui = SpreadsheetApp.getUi(); 
   
   try {
-    // ----------------------------------------------------
     // 1. デプロイ作業の実行
-    // ----------------------------------------------------
-    if (!isTriggered) {
-      showToast('最新のコードでWebアプリを公開中...', '⚙️ セットアップ');
-    } else {
-      Logger.log('⏳ [自動実行] 最新のコードでWebアプリを公開中...');
-    }
-
+    showToast('最新のコードでWebアプリを公開中...', '⚙️ セットアップ');
     const deployedData = executeDeployment(scriptId, token);
 
-    // ----------------------------------------------------
-    // 2. トリガー作成作業の実行
-    // ----------------------------------------------------
-    if (!isTriggered) {
-      showToast('自動更新およびアプリのトリガーを設置中...', '⚙️ セットアップ');
-    } else {
-      Logger.log('⏳ [自動実行] 自動更新およびアプリのトリガーを設置中...');
-    }
-
+    // 2. アプリ固有トリガーの作成作業を実行
+    showToast('アプリ固有のトリガーを設置中...', '⚙️ セットアップ');
     setupProjectTriggers();
 
-    // ----------------------------------------------------
     // 結果発表
-    // ----------------------------------------------------
-    let successMessage = '🎉 アプリの公開とすべてのトリガー設定が完了しました！\n\n';
+    let successMessage = '🎉 アプリの公開とトリガー設定が完了しました！\n\n';
     if (deployedData && deployedData.entryPoints && deployedData.entryPoints.length > 0) {
       successMessage += `🔗 生成された公開URL:\n${deployedData.entryPoints[0].webApp.url}`;
-    } else if (deployedData && deployedData.deploymentId) {
-      // 既存デプロイが更新されたケース
-      successMessage += `🔗 公開URL（既存）が最新コードに更新されました。\nシステム管理メニューの「現在の公開状況を確認する」からURLを取得できます。`;
     } else {
-      successMessage += '（※すでに公開済みのWebアプリURLが維持されています）';
+      successMessage += `🔗 公開URLが最新コードに更新されました。\nシステム管理メニューの「現在の公開状況を確認する」からURLを取得できます。`;
     }
     
-    if (isTriggered) {
-      Logger.log(`✅ [自動実行完了] ${successMessage.replace(/\n/g, ' ')}`);
-    } else if (ui) {
-      ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
-    }
+    ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
 
   } catch (err) {
-    if (isTriggered) {
-      Logger.log('❌ [自動実行エラー] 処理中にエラーが発生しました:\n' + err.toString());
-    } else if (ui) {
-      ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + err.toString(), ui.ButtonSet.OK);
-    }
+    ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + err.toString(), ui.ButtonSet.OK);
   }
 }
 
 /**
  * 【機能1】デプロイ作業（新しい版の作成、およびデプロイの作成・更新）
- * @param {string} scriptId - スクリプトID
- * @param {string} token - OAuthトークン
- * @return {Object} デプロイ結果のデータオブジェクト（既存更新時は、擬似的に既存IDを含めて返却）
  */
 function executeDeployment(scriptId, token) {
-  // 1. 新しい「版（バージョン）」を必ず作成する
   const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
   const createVersion = UrlFetchApp.fetch(versionUrl, {
     method: "post",
@@ -246,7 +232,6 @@ function executeDeployment(scriptId, token) {
     throw new Error("新しい版の作成に失敗しました: " + createVersion.getContentText());
   }
   
-  // 既存の本物デプロイがあるかチェック
   const deployUrl = `https://script.googleapis.com/v1/projects/${scriptId}/deployments`;
   const getDeploy = UrlFetchApp.fetch(deployUrl, { method: "get", headers: { "Authorization": "Bearer " + token }, muteHttpExceptions: true });
   
@@ -266,7 +251,6 @@ function executeDeployment(scriptId, token) {
   let deployedData = null;
   
   if (existingDeployId) {
-    // 既存デプロイがある場合は、新しい版(vNum)で既存デプロイを更新(PUT)する
     const updateDeployUrl = `${deployUrl}/${existingDeployId}`;
     const updateResponse = UrlFetchApp.fetch(updateDeployUrl, {
       method: "put",
@@ -284,14 +268,12 @@ function executeDeployment(scriptId, token) {
     
     if (updateResponse.getResponseCode() === 200) {
       deployedData = JSON.parse(updateResponse.getContentText());
-      // APIのレスポンス構造により deploymentId が直下にない場合を考慮し、明示的に付与
       if (!deployedData.deploymentId) deployedData.deploymentId = existingDeployId;
       Logger.log(`🟢 既存のデプロイ [${existingDeployId}] を 新しい版 ${vNum} に更新しました。`);
     } else {
       throw new Error("デプロイの更新に失敗しました: " + updateResponse.getContentText());
     }
   } else {
-    // 無ければ新規デプロイ(POST)
     const deployResponse = UrlFetchApp.fetch(deployUrl, {
       method: "post",
       headers: { "Authorization": "Bearer " + token },
@@ -316,23 +298,12 @@ function executeDeployment(scriptId, token) {
 }
 
 /**
- * 【機能2】トリガー作成作業
+ * 【機能2】トリガー作成作業（アプリ固有トリガーのみ）
  */
 function setupProjectTriggers() {
   const allTriggers = ScriptApp.getProjectTriggers();
 
-  // ① updater自身の「毎日深夜3時」の自動更新トリガー
-  const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
-  if (!hasUpdateTrigger) {
-    ScriptApp.newTrigger('checkAndExecuteUpdate')
-      .timeBased()
-      .everyDays(1)
-      .atHour(3)
-      .create();
-    Logger.log("🟢 自動更新トリガー（毎日深夜3時）を設置しました。");
-  }
-
-  // ② merged.gs側からアプリ固有のトリガー設定を動的作成
+  // merged.gs側からアプリ固有のトリガー設定を動的作成
   if (typeof getAppTriggerConfig === 'function') {
     const appTriggers = getAppTriggerConfig();
     
@@ -385,12 +356,10 @@ function onOpen() {
 
   menu.addSubMenu(
     ui.createMenu('🛠️ システム管理')
-      .addItem('🚀 アプリを公開する', 'menu_setupInitialDeploymentAndTriggers')
+      .addItem('🚀 アプリを公開する（初回）', 'menu_setupInitialDeploymentAndTriggers')
       .addItem('📄 現在の公開状況を確認する', 'menu_checkCurrentDeploymentStatus')
       .addSeparator()
-      .addItem('🔄 アプリを更新する', 'menu_forceExecuteUpdate')
-      .addItem('▶️ アプリの自動更新を開始する', 'menu_startAutoUpdateTrigger')
-      .addItem('⏸️ アプリの自動更新を一時停止する', 'menu_stopAutoUpdateTrigger')
+      .addItem('🔎 バージョン情報を確認する', 'menu_checkVersionAndNotify')
       .addSeparator()
       .addItem('🛑 アプリの公開を停止する', 'menu_terminateSystem')
   );
@@ -399,48 +368,20 @@ function onOpen() {
 }
 
 /**
- * 1. 「🚀 アプリを公開する」の実装
+ * 1. 「🚀 アプリを公開する（初回）」の実装
  */
 function menu_setupInitialDeploymentAndTriggers() {
   const ui = SpreadsheetApp.getUi();
   
   const response = ui.alert(
     'アプリの公開（初回セットアップ）',
-    'Webアプリを公開し、自動更新を含むすべての定期実行トリガーを設置します。よろしいですか？\n（※初回実行時のみ、Googleによるアクセス権限の承認が必要です）',
+    'Webアプリを公開し、アプリに必要な定期実行トリガーを設置します。よろしいですか？\n（※初回実行時のみ、Googleによるアクセス権限の承認が必要です）',
     ui.ButtonSet.YES_NO
   );
   
-  if (response !== ui.Button.YES) {
-    return;
-  }
+  if (response !== ui.Button.YES) return;
   
   createDeployAndTrigger();
-}
-
-/**
- * 2. 「🔄 アプリを更新する」の実装
- */
-function menu_forceExecuteUpdate() {
-  const ui = SpreadsheetApp.getUi();
-  
-  const response = ui.alert(
-    'アプリの更新',
-    'GitHubから最新のプログラムを今すぐダウンロードし、現在のURLを維持したままアプリを更新します。よろしいですか？',
-    ui.ButtonSet.YES_NO
-  );
-  
-  if (response !== ui.Button.YES) {
-    return;
-  }
-  
-  showToast('アプリを更新中（GitHub通信＆デプロイを実行）...', '⚙️ アプリ更新');
-
-  try {
-    checkAndExecuteUpdate();
-    ui.alert('アップデート完了', '🎉\n\nWebアプリのURLは変わっていません。画面をリロードしてご確認ください。', ui.ButtonSet.OK);
-  } catch (e) {
-    ui.alert('❌ 更新失敗', 'エラーが発生しました:\n' + e.toString(), ui.ButtonSet.OK);
-  }
 }
 
 /**
@@ -453,7 +394,7 @@ function menu_terminateSystem() {
   
   const res1 = ui.alert(
     '⚠️ 警告：アプリの公開停止',
-    '現在公開中のWebアプリURLを無効化し、自動更新を含むすべての定期実行トリガーを削除します。\n本当に実行してもよろしいですか？',
+    '現在公開中のWebアプリURLを無効化し、すべての定期実行トリガーを削除します。\n本当に実行してもよろしいですか？',
     ui.ButtonSet.YES_NO
   );
   if (res1 !== ui.Button.YES) return;
@@ -574,9 +515,6 @@ function menu_checkCurrentDeploymentStatus() {
     const allTriggers = ScriptApp.getProjectTriggers();
     let triggerInfoText = "";
     
-    const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
-    triggerInfoText += hasUpdateTrigger ? "・🔄 自動更新システム: 🟢 稼働中（毎日深夜）\n" : "・🔄 自動更新システム: 🛑 停止中\n";
-    
     if (typeof getAppTriggerConfig === 'function') {
       const appTriggers = getAppTriggerConfig();
       if (Array.isArray(appTriggers)) {
@@ -602,51 +540,30 @@ function menu_checkCurrentDeploymentStatus() {
 }
 
 /**
- * システム管理：毎晩の自動更新トリガーを設置（開始）する
+ * HTML（フロントエンド）から呼び出され、アップデートの有無を判定する
+ * @return {Object} 判定結果とバージョン情報
  */
-function menu_startAutoUpdateTrigger() {
-  const ui = SpreadsheetApp.getUi();
-  const allTriggers = ScriptApp.getProjectTriggers();
+function checkUpdateForHtml() {
+  const url = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/src/shared/version.json`;
   
-  // 重複チェック
-  const hasUpdateTrigger = allTriggers.some(t => t.getHandlerFunction() === 'checkAndExecuteUpdate');
-  
-  if (hasUpdateTrigger) {
-    ui.alert('確認', '🔄 毎晩の自動更新トリガーは、すでに「稼働中」です。', ui.ButtonSet.OK);
-    return;
-  }
-  
-  // トリガー新規作成
-  ScriptApp.newTrigger('checkAndExecuteUpdate')
-    .timeBased()
-    .everyDays(1)
-    .atHour(3) // 深夜3時〜4時の間に発火
-    .create();
-    
-  showToast('自動更新トリガーを設置しました。', '▶️ 稼働開始');
-  ui.alert('稼働開始', '🟢 毎晩深夜3時の自動更新システムを有効化しました。', ui.ButtonSet.OK);
-}
-
-/**
- * システム管理：毎晩の自動更新トリガーを削除（一時停止）する
- */
-function menu_stopAutoUpdateTrigger() {
-  const ui = SpreadsheetApp.getUi();
-  const allTriggers = ScriptApp.getProjectTriggers();
-  let deleted = false;
-  
-  // checkAndExecuteUpdate のトリガーだけを狙い撃ちして削除
-  allTriggers.forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'checkAndExecuteUpdate') {
-      ScriptApp.deleteTrigger(trigger);
-      deleted = true;
+  try {
+    const response = UrlFetchApp.fetch(url, { "muteHttpExceptions": true });
+    if (response.getResponseCode() !== 200) {
+      return { hasUpdate: false, error: "バージョン取得失敗" };
     }
-  });
-  
-  if (deleted) {
-    showToast('自動更新トリガーを削除しました。', '⏸️ 一時停止');
-    ui.alert('一時停止完了', '⏸️ 毎晩の自動更新を一時停止しました。\n（※ユーザーのアプリ利用や、手動でのアップデート機能はそのまま使えます）', ui.ButtonSet.OK);
-  } else {
-    ui.alert('確認', '🛑 自動更新トリガーはすでに停止しているか、設置されていません。', ui.ButtonSet.OK);
+    
+    const resData = JSON.parse(response.getContentText());
+    const latestVersion = resData.version;
+    const description = resData.description || "";
+    
+    // 現在のバージョンとGitHubの最新バージョンを比較
+    return {
+      hasUpdate: latestVersion !== CURRENT_VERSION,
+      currentVersion: CURRENT_VERSION,
+      latestVersion: latestVersion,
+      description: description
+    };
+  } catch(e) {
+    return { hasUpdate: false, error: e.toString() };
   }
 }
