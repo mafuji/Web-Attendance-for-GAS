@@ -46,29 +46,23 @@
 </style>
 
 <script>
-  // 外部（各画面）から安全なタイミングで呼び出してもらう関数
-  function initUpdateAlert() {
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.hasUpdate) {
-          const toast = document.getElementById('update-toast');
-          const msg = document.getElementById('update-toast-msg');
-          msg.innerText = `新しいバージョン (${result.latestVersion}) が公開されました。アプリを正しく動作させるため、更新をお願いします。`;
-          toast.style.display = 'block';
-        }
-      })
-      .withFailureHandler(function(error) {
-        console.error("アップデート確認エラー:", error);
-      })
-      .checkUpdateForHtml();
-  }
-
-  // ログイン画面やパスコード画面など、他に通信がない画面向けに自動実行も残しておく
-  // 既にデータ取得完了後などで initUpdateAlert が呼ばれていた場合は二重実行しない
   window.addEventListener('load', function() {
-    // summary画面（fetchDataがある画面）以外では、loadイベントで自動実行する
-    if (typeof fetchData === 'undefined') {
-      initUpdateAlert();
-    }
+    // 💡 画面読み込みから「1.5秒（1500ミリ秒）」だけ実行を遅らせる
+    // これにより、ダッシュボード初期起動時の getSummaryData 通信との衝突を100%回避する
+    setTimeout(function() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.hasUpdate) {
+            const toast = document.getElementById('update-toast');
+            const msg = document.getElementById('update-toast-msg');
+            msg.innerText = `新しいバージョン (${result.latestVersion}) が公開されました。アプリを正しく動作させるため、更新をお願いします。`;
+            toast.style.display = 'block';
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error("アップデート確認エラー:", error);
+        })
+        .checkUpdateForHtml();
+    }, 1500); 
   });
 </script>
