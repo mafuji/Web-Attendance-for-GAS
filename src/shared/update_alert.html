@@ -1,38 +1,42 @@
 <div id="update-toast" style="
-  display: none; 
-  position: fixed; 
-  bottom: 20px; 
-  right: 20px; 
-  background-color: #1e293b; 
-  color: #ffffff; 
-  padding: 16px 20px; 
-  border-radius: 12px; 
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3); 
-  z-index: 99999; 
-  max-width: 280px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
-  border: 1px solid #334155;
-  animation: slideInToast 0.3s ease-out;
+  display: none !important; 
+  position: fixed !important; 
+  bottom: 20px !important; 
+  right: 20px !important; 
+  background-color: #1e293b !important; 
+  color: #ffffff !important; 
+  padding: 16px 20px !important; 
+  border-radius: 12px !important; 
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3) !important; 
+  z-index: 999999 !important; 
+  max-width: 280px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  border: 1px solid #334155 !important;
+  animation: slideInToast 0.3s ease-out !important;
+  text-align: left !important;
 ">
-  <div style="font-weight: bold; margin-bottom: 6px; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
+  <div style="font-weight: bold !important; margin-bottom: 6px !important; color: #fbbf24 !important; display: flex !important; align-items: center !important; gap: 6px !important; font-size: 14px !important;">
     ✨ アップデートがあります
   </div>
-  <div id="update-toast-msg" style="color: #cbd5e1; margin-bottom: 12px;">
+  <div id="update-toast-msg" style="color: #cbd5e1 !important; margin-bottom: 12px !important; font-size: 12px !important; display: block !important;">
     新しいバージョンが利用可能です。
   </div>
-  <div style="text-align: right;">
+  <div style="text-align: right !important; display: block !important;">
     <button onclick="location.reload();" style="
-      background-color: #2563eb; 
-      color: #ffffff; 
-      border: none; 
-      padding: 6px 14px; 
-      border-radius: 6px; 
-      cursor: pointer;
-      font-weight: bold;
-      font-size: 12px;
-      transition: background-color 0.2s;
+      display: inline-block !important;
+      background-color: #2563eb !important; 
+      color: #ffffff !important; 
+      border: none !important; 
+      padding: 6px 14px !important; 
+      border-radius: 6px !important; 
+      cursor: pointer !important;
+      font-weight: bold !important;
+      font-size: 12px !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      text-transform: none !important;
     " onmouseover="this.style.backgroundColor='#1d4ed8'" onmouseout="this.style.backgroundColor='#2563eb'">
       今すぐ更新
     </button>
@@ -56,7 +60,8 @@
           
           msg.innerText = `新しいバージョン (${result.latestVersion}) が公開されました。アプリを正しく動作させるため、更新をお願いします。`;
           
-          toast.style.display = 'block';
+          // display: none !important を上書きして強制表示
+          toast.style.setProperty('display', 'block', 'important');
         }
       })
       .withFailureHandler(function(error) {
