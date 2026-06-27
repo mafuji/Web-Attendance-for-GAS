@@ -8,7 +8,7 @@
 
 ## 📘 マニュアル
 詳細な設定や使い方は、下記のマニュアルをご確認ください。
-* [Web入退室 マニュアルはこちら](https://sites.google.com/view/web-attendance-for-gas-manual/%E3%83%9B%E3%83%BC%E3%83%A0)
+* [Web入退室 マニュアルはこちら]
 
 ---
 
