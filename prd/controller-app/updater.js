@@ -356,7 +356,7 @@ function onOpen() {
 
   menu.addSubMenu(
     ui.createMenu('🛠️ システム管理')
-      .addItem('🚀 アプリを公開する（初回）', 'menu_setupInitialDeploymentAndTriggers')
+      .addItem('🚀 アプリを公開する', 'menu_setupInitialDeploymentAndTriggers')
       .addItem('📄 現在の公開状況を確認する', 'menu_checkCurrentDeploymentStatus')
       .addSeparator()
       .addItem('🔎 バージョン情報を確認する', 'menu_checkVersionAndNotify')
@@ -374,8 +374,8 @@ function menu_setupInitialDeploymentAndTriggers() {
   const ui = SpreadsheetApp.getUi();
   
   const response = ui.alert(
-    'アプリの公開（初回セットアップ）',
-    'Webアプリを公開し、アプリに必要な定期実行トリガーを設置します。よろしいですか？\n（※初回実行時のみ、Googleによるアクセス権限の承認が必要です）',
+    'アプリの公開',
+    'Webアプリを公開し、アプリに必要な定期実行トリガーを設置します。よろしいですか？',
     ui.ButtonSet.YES_NO
   );
   
