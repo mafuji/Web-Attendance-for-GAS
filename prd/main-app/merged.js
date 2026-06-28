@@ -1,4 +1,8 @@
 // --- File: main.js ---
+// バージョン情報
+const CURRENT_VERSION = "v1.0.0"; 
+function getAppVersion() { return CURRENT_VERSION; }
+
 function doGet(e) {
   const page = e.parameter.p; // URLパラメータ "p" を取得
   const email = Session.getActiveUser().getEmail(); // 💡ユーザーのメアドを一度取得

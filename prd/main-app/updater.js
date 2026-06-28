@@ -3,13 +3,19 @@
 // ==========================================
 const GITHUB_USER = "mafuji";
 const GITHUB_REPO = "Web-Attendance-for-GAS";
-const CURRENT_VERSION = "v1.0.0"; // アップデート後にここも自動で書き換わります
+const TARGET_FILE = "merged.js";
 
 // ==========================================
 // アプリごとの固有設定
 // ==========================================
-const TARGET_APP_DIR = "main-app"; // アプリごとに書き換えて複製する
-const TARGET_FILE = "merged.js";
+const TARGET_APP_DIR = "main-app"; // GitHub Actionsでアプリごとに書き換えて複製する
+
+/**
+ * 現在のアプリバージョンを merged.gs 側から安全に取得する
+ */
+function getCurrentAppVersion() {
+  return (typeof getAppVersion === 'function') ? getAppVersion() : "v1.0.0";
+}
 
 /**
  * 共通トースト通知ヘルパー
@@ -29,45 +35,44 @@ function menu_checkVersionAndNotify() {
   const ui = SpreadsheetApp.getUi();
   showToast('GitHubから最新のバージョン情報を取得中...', '🔎 バージョン確認');
 
-  // GitHubのversion.jsonから最新情報を取得
   const url = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/src/shared/version.json`;
   const response = UrlFetchApp.fetch(url, { "muteHttpExceptions": true });
-  
   if (response.getResponseCode() !== 200) {
-    ui.alert('❌ 確認失敗', `バージョン情報の取得に失敗しました。\nステータス: ${response.getResponseCode()}`, ui.ButtonSet.OK);
+    ui.alert('❌ 確認失敗', `エラー: ${response.getResponseCode()}`, ui.ButtonSet.OK);
     return;
   }
   
   const resData = JSON.parse(response.getContentText());
-  const latestVersion = resData.version;
-  const updateNotes = resData.description || "新機能の追加およびバグ修正"; // version.jsonに更新内容があれば表示
+  // 💡 自分のアプリ用データをピンポイント抽出
+  const appData = resData.apps && resData.apps[TARGET_APP_DIR];
+  if (!appData) {
+    ui.alert('❌ 確認失敗', 'バージョン情報が見つかりません。', ui.ButtonSet.OK);
+    return;
+  }
 
-  if (latestVersion !== CURRENT_VERSION) {
-    // 💡 手動更新用のRawダウンロードURLを動的に組み立て
+  const latestVersion = appData.version;
+  const currentVersion = getCurrentAppVersion(); // 💡 merged.js から取得
+
+  if (latestVersion !== currentVersion) {
     const remotePath = `prd/${TARGET_APP_DIR}/${TARGET_FILE}`;
     const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${latestVersion}/${remotePath}`;
 
-    // 新バージョンがある場合のUI通知
     const alertMessage = `📢 新しいバージョンが利用可能です！\n\n` +
-                         `現在のバージョン: ${CURRENT_VERSION}\n` +
+                         `現在のバージョン: ${currentVersion}\n` +
                          `最新のバージョン: ${latestVersion}\n\n` +
-                         `【更新内容】\n${updateNotes}\n\n` +
+                         `【更新内容】\n${appData.description || ""}\n\n` +
                          `--------------------------------------------\n` +
                          `💡 ［手動でコードを更新したい場合］\n` +
-                         `下記URLをブラウザで開き、コードを全コピーして「merged」ファイルに上書きペーストしてください。\n` +
+                         `下記URLのコードを全コピーして「merged」に上書きしてください。\n` +
                          `${downloadUrl}\n` +
                          `--------------------------------------------\n\n` +
-                         `このままアプリの自動アップデート（API経由）を実行しますか？\n` +
-                         `（※現在のWebアプリURLを維持したまま更新されます）`;
+                         `このまま自動アップデートを実行しますか？`;
     
-    const choice = ui.alert('🔄 アップデート通知', alertMessage, ui.ButtonSet.YES_NO);
-    
-    if (choice === ui.Button.YES) {
+    if (ui.alert('🔄 アップデート通知', alertMessage, ui.ButtonSet.YES_NO) === ui.Button.YES) {
       executeDirectUpdate(latestVersion);
     }
   } else {
-    // すでに最新の場合のUI通知
-    ui.alert('✅ 最新状態です', `ご利用中のバージョンは最新です。\n\n現在のバージョン: ${CURRENT_VERSION}`, ui.ButtonSet.OK);
+    ui.alert('✅ 最新状態です', `現在のバージョン: ${currentVersion}`, ui.ButtonSet.OK);
   }
 }
 
@@ -138,13 +143,6 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
     if (file.name === "merged") {
       file.source = newCode;
       mergedFileExists = true;
-    }
-    
-    if (file.name === "updater") {
-      file.source = file.source.replace(
-        /const CURRENT_VERSION = ".*?";/,
-        `const CURRENT_VERSION = "${latestVersion}";`
-      );
     }
     
     if (file.name === "appsscript") {
@@ -554,23 +552,23 @@ function menu_checkCurrentDeploymentStatus() {
  */
 function checkUpdateForHtml() {
   const url = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/src/shared/version.json`;
-  
   try {
     const response = UrlFetchApp.fetch(url, { "muteHttpExceptions": true });
-    if (response.getResponseCode() !== 200) {
-      return { hasUpdate: false, error: "バージョン取得失敗" };
-    }
+    if (response.getResponseCode() !== 200) return { hasUpdate: false, error: "取得失敗" };
     
     const resData = JSON.parse(response.getContentText());
-    const latestVersion = resData.version;
-    const description = resData.description || "";
+    // 💡 自分のアプリ用データをピンポイント抽出
+    const appData = resData.apps && resData.apps[TARGET_APP_DIR];
+    if (!appData) return { hasUpdate: false, error: "データなし" };
+
+    const latestVersion = appData.version;
+    const currentVersion = getCurrentAppVersion(); // 💡 merged.js から取得
     
-    // 現在のバージョンとGitHubの最新バージョンを比較
     return {
-      hasUpdate: latestVersion !== CURRENT_VERSION,
-      currentVersion: CURRENT_VERSION,
+      hasUpdate: latestVersion !== currentVersion,
+      currentVersion: currentVersion,
       latestVersion: latestVersion,
-      description: description
+      description: appData.description || ""
     };
   } catch(e) {
     return { hasUpdate: false, error: e.toString() };
