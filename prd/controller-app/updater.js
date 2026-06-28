@@ -43,12 +43,21 @@ function menu_checkVersionAndNotify() {
   const updateNotes = resData.description || "新機能の追加およびバグ修正"; // version.jsonに更新内容があれば表示
 
   if (latestVersion !== CURRENT_VERSION) {
+    // 💡 手動更新用のRawダウンロードURLを動的に組み立て
+    const remotePath = `prd/${TARGET_APP_DIR}/${TARGET_FILE}`;
+    const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${latestVersion}/${remotePath}`;
+
     // 新バージョンがある場合のUI通知
     const alertMessage = `📢 新しいバージョンが利用可能です！\n\n` +
                          `現在のバージョン: ${CURRENT_VERSION}\n` +
                          `最新のバージョン: ${latestVersion}\n\n` +
                          `【更新内容】\n${updateNotes}\n\n` +
-                         `今すぐアプリを最新版にアップデートしますか？\n` +
+                         `--------------------------------------------\n` +
+                         `💡 ［手動でコードを更新したい場合］\n` +
+                         `下記URLをブラウザで開き、コードを全コピーして「merged」ファイルに上書きペーストしてください。\n` +
+                         `${downloadUrl}\n` +
+                         `--------------------------------------------\n\n` +
+                         `このままアプリの自動アップデート（API経由）を実行しますか？\n` +
                          `（※現在のWebアプリURLを維持したまま更新されます）`;
     
     const choice = ui.alert('🔄 アップデート通知', alertMessage, ui.ButtonSet.YES_NO);
