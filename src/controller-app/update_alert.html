@@ -9,7 +9,7 @@
   border-radius: 12px; 
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); 
   z-index: 99999; 
-  max-width: 280px;
+  max-width: 300px; /* 案内文が少し長くなるため、幅を少し広げました */
   font-family: sans-serif;
   font-size: 13px;
   line-height: 1.5;
@@ -17,14 +17,13 @@
   animation: slideInToast 0.3s ease-out;
 ">
   <div style="font-weight: bold; margin-bottom: 6px; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
-    ✨ アップデートがあります
+    📢 システムアップデートのお知らせ
   </div>
   <div id="update-toast-msg" style="color: #cbd5e1; margin-bottom: 12px;">
-    新しいバージョンが利用可能です。
-  </div>
-  <div style="text-align: right;" id="update-toast-actions">
-    <button onclick="handleUpdateClick();" style="
-      background-color: #2563eb; 
+    </div>
+  <div style="text-align: right;">
+    <button onclick="document.getElementById('update-toast').style.display='none';" style="
+      background-color: #475569; 
       color: #ffffff; 
       border: none; 
       padding: 6px 14px; 
@@ -33,7 +32,7 @@
       font-weight: bold;
       font-size: 12px;
     ">
-      今すぐ更新
+      閉じる
     </button>
   </div>
 </div>
@@ -46,18 +45,18 @@
 </style>
 
 <script>
-  // 最新のバージョンを保持する変数
-  let targetLatestVersion = "";
-
   window.addEventListener('load', function() {
+    // ダッシュボード初期起動時の他の通信（getSummaryDataなど）との衝突を回避するため遅延実行
     setTimeout(function() {
       google.script.run
         .withSuccessHandler(function(result) {
           if (result && result.hasUpdate) {
-            targetLatestVersion = result.latestVersion; // バージョンを記憶
             const toast = document.getElementById('update-toast');
             const msg = document.getElementById('update-toast-msg');
-            msg.innerText = `新しいバージョン (${result.latestVersion}) が公開されました。アプリを正しく動作させるため、更新をお願いします。`;
+            
+            // 💡 管理者向けの案内メッセージに変更
+            msg.innerText = `新しいバージョン (${result.latestVersion}) が利用可能です。\n\n管理者は、スプレッドシートの「アプリメニュー」から更新を実行するか、マニュアルに従って最新のGASコードを取得してデプロイをバージョンアップしてください。`;
+            
             toast.style.display = 'block';
           }
         })
@@ -67,41 +66,4 @@
         .checkUpdateForHtml();
     }, 1500); 
   });
-
-  /**
-   * 「今すぐ更新」ボタンが押された時の処理
-   */
-  function handleUpdateClick() {
-    // 1. 実行前の確認
-    const confirmUpdate = confirm(`アプリをバージョン ${targetLatestVersion} にアップデートしますか？\n（処理には数十秒かかります。完了するまで画面を閉じないでください）`);
-    if (!confirmUpdate) return;
-
-    const msg = document.getElementById('update-toast-msg');
-    const actions = document.getElementById('update-toast-actions');
-
-    // ボタンを非表示にして、処理中メッセージに切り替える
-    actions.style.display = 'none';
-    msg.innerText = "⏳ アップデートを実行中... システムを書き換えています。そのままお待ちください。";
-
-    // 2. GASの実行関数（サーバー側で用意）を呼び出す
-    google.script.run
-      .withSuccessHandler(function(success) {
-        if (success) {
-          // 反映時間を考慮し、完了メッセージを出して5秒後に自動リロード
-          msg.innerText = "🎉 アップデートが正常に完了しました！最新のプログラムを反映するため、5秒後に自動的にページを再読み込みします。";
-          
-          setTimeout(function() {
-            location.reload();
-          }, 5000); // 5000ミリ秒（5秒）待機
-        } else {
-          msg.innerText = "❌ アップデートに失敗しました。時間をおいて再度お試しください。";
-          actions.style.display = 'block'; // ボタンを再表示
-        }
-      })
-      .withFailureHandler(function(error) {
-        msg.innerText = "❌ エラーが発生しました: " + error.message;
-        actions.style.display = 'block'; // ボタンを再表示
-      })
-      .executeUpdateFromHtml(targetLatestVersion); // HTML用の実行関数
-  }
 </script>
