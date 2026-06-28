@@ -55,7 +55,7 @@ function menu_checkVersionAndNotify() {
 
   if (latestVersion !== currentVersion) {
     const remotePath = `prd/${TARGET_APP_DIR}/${TARGET_FILE}`;
-    const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${latestVersion}/${remotePath}`;
+    const downloadUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/refs/tags/${latestVersion}/${remotePath}`;
 
     const alertMessage = `📢 新しいバージョンが利用可能です！\n\n` +
                          `現在のバージョン: ${currentVersion}\n` +
