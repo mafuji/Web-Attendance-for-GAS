@@ -12,14 +12,20 @@ const TARGET_APP_DIR = "controller-app"; // アプリごとに書き換えて複
 const TARGET_FILE = "merged.js";
 
 /**
- * 共通トースト通知ヘルパー
+ * 【スマート化】共通トースト通知ヘルパー
+ * スプレッドシートUIが利用可能な場合のみトーストを表示し、それ以外はログ出力
  */
 function showToast(message, title = '⚙️ システム') {
   try {
-    SpreadsheetApp.getActiveSpreadsheet().toast(message, title);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss && SpreadsheetApp.getUi()) { // UIが取得可能か安全チェック
+      ss.toast(message, title);
+      return;
+    }
   } catch(e) {
-    Logger.log(`[Toast] ${title}: ${message}`);
+    // UIが使えないコンテキスト（HTMLトリガーなど）ではキャッチしてログに流す
   }
+  Logger.log(`[Toast] ${title}: ${message}`);
 }
 
 /**
@@ -40,10 +46,9 @@ function menu_checkVersionAndNotify() {
   
   const resData = JSON.parse(response.getContentText());
   const latestVersion = resData.version;
-  const updateNotes = resData.description || "新機能の追加およびバグ修正"; // version.jsonに更新内容があれば表示
+  const updateNotes = resData.description || "新機能の追加およびバグ修正"; 
 
   if (latestVersion !== CURRENT_VERSION) {
-    // 新バージョンがある場合のUI通知
     const alertMessage = `📢 新しいバージョンが利用可能です！\n\n` +
                          `現在のバージョン: ${CURRENT_VERSION}\n` +
                          `最新のバージョン: ${latestVersion}\n\n` +
@@ -57,20 +62,18 @@ function menu_checkVersionAndNotify() {
       executeDirectUpdate(latestVersion);
     }
   } else {
-    // すでに最新の場合のUI通知
     ui.alert('✅ 最新状態です', `ご利用中のバージョンは最新です。\n\n現在のバージョン: ${CURRENT_VERSION}`, ui.ButtonSet.OK);
   }
 }
 
 /**
- * ダイアログから直接呼び出されるアップデート実行関数
+ * ダイアログから直接呼び出されるアップデート実行関数（手動メニュー用）
  */
 function executeDirectUpdate(latestVersion) {
   const ui = SpreadsheetApp.getUi();
   showToast('最新プログラムをダウンロード中...', '⚙️ アプリ更新');
 
   try {
-    // コードとマニフェストを取得
     const rawCode = fetchFromGitHub(latestVersion, TARGET_FILE);
     if (!rawCode) throw new Error(`${TARGET_FILE} の取得に失敗しました。`);
 
@@ -106,28 +109,24 @@ function fetchFromGitHub(version, fileName) {
 
 /**
  * HTMLのトースト（フロントエンド）から呼び出されるアップデート実行関数
- * UIアラートを出さずにバックグラウンド処理のみを実行して結果を返す
  */
 function executeUpdateFromHtml(latestVersion) {
   Logger.log(`[HTMLトリガー] バージョン ${latestVersion} へのアップデートを開始します。`);
   
   try {
-    // 1. GitHubからコードとマニフェストを取得
     const rawCode = fetchFromGitHub(latestVersion, TARGET_FILE);
     if (!rawCode) throw new Error(`${TARGET_FILE} の取得に失敗しました。`);
 
     const rawManifest = fetchFromGitHub(latestVersion, "appsscript.json");
     if (!rawManifest) throw new Error("appsscript.json の取得に失敗しました。");
     
-    // 2. プロジェクトファイルの書き換え (API経由、自動デプロイとトリガー設定まで内包)
-    // ※ 既存の updateProjectFiles 内の createDeployAndTrigger() も実行されます
+    // プロジェクトファイルの書き換え (自動デプロイとトリガー設定まで内包)
     const success = updateProjectFiles(rawCode, rawManifest, latestVersion);
-    
-    return success; // フロントへ true を返す
+    return success; 
     
   } catch (e) {
     Logger.log("❌ HTML経由のアップデートでエラーが発生しました: " + e.toString());
-    throw new Error(e.toString()); // フロント側の withFailureHandler へエラーを渡す
+    throw new Error(e.toString()); 
   }
 }
 
@@ -207,12 +206,11 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
 }
 
 /**
- * デプロイとトリガー作成（メインコントロール関数）
+ * 【スマート化】デプロイとトリガー作成（メインコントロール関数）
  */
 function createDeployAndTrigger() {
   const scriptId = ScriptApp.getScriptId();
   const token = ScriptApp.getOAuthToken();
-  const ui = SpreadsheetApp.getUi(); 
   
   try {
     // 1. デプロイ作業の実行
@@ -223,7 +221,7 @@ function createDeployAndTrigger() {
     showToast('アプリ固有のトリガーを設置中...', '⚙️ セットアップ');
     setupProjectTriggers();
 
-    // 結果発表
+    // 【スマート化】UIアラートの制御
     let successMessage = '🎉 アプリの公開とトリガー設定が完了しました！\n\n';
     if (deployedData && deployedData.entryPoints && deployedData.entryPoints.length > 0) {
       successMessage += `🔗 生成された公開URL:\n${deployedData.entryPoints[0].webApp.url}`;
@@ -231,15 +229,29 @@ function createDeployAndTrigger() {
       successMessage += `🔗 公開URLが最新コードに更新されました。\nシステム管理メニューの「現在の公開状況を確認する」からURLを取得できます。`;
     }
     
-    ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
+    // UIが取得できるコンテキスト（スプレッドシート手動メニュー）のときだけアラートを出す
+    try {
+      const ui = SpreadsheetApp.getUi();
+      if (ui) ui.alert('セットアップ完了', successMessage, ui.ButtonSet.OK);
+    } catch(e) {
+      Logger.log("[HTMLコンテキスト] UIアラートをスキップしました。メッセージ: " + successMessage.replace(/\n/g, " "));
+    }
 
   } catch (err) {
-    ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + err.toString(), ui.ButtonSet.OK);
+    // エラー時のUI処理も同様に制御
+    try {
+      const ui = SpreadsheetApp.getUi();
+      if (ui) {
+        ui.alert('❌ エラー発生', '処理中にエラーが発生しました:\n' + err.toString(), ui.ButtonSet.OK);
+        return;
+      }
+    } catch(e) {}
+    throw err; // HTML側（Webアプリコンテキスト）の場合は、上位にエラーを投げてフロントのwithFailureHandlerに伝える
   }
 }
 
 /**
- * 【機能1】デプロイ作業（新しい版の作成、およびデプロイの作成・更新）
+ * 【スマート化】デプロイ作業（新しい版の作成、およびデプロイの作成・更新）
  */
 function executeDeployment(scriptId, token) {
   const versionUrl = `https://script.googleapis.com/v1/projects/${scriptId}/versions`;
@@ -247,7 +259,8 @@ function executeDeployment(scriptId, token) {
     method: "post",
     headers: { "Authorization": "Bearer " + token },
     contentType: "application/json",
-    payload: JSON.stringify({ "description": `Deploy via Update System (${CURRENT_VERSION})` }),
+    // 【スマート化】CURRENT_VERSIONを動的に判定するか、固定の文字にしてエラー回避
+    payload: JSON.stringify({ "description": `Deploy via Update System` }),
     muteHttpExceptions: true
   });
   
@@ -330,7 +343,6 @@ function executeDeployment(scriptId, token) {
 function setupProjectTriggers() {
   const allTriggers = ScriptApp.getProjectTriggers();
 
-  // merged.gs側からアプリ固有のトリガー設定を動的作成
   if (typeof getAppTriggerConfig === 'function') {
     const appTriggers = getAppTriggerConfig();
     
@@ -583,7 +595,6 @@ function checkUpdateForHtml() {
     const latestVersion = resData.version;
     const description = resData.description || "";
     
-    // 現在のバージョンとGitHubの最新バージョンを比較
     return {
       hasUpdate: latestVersion !== CURRENT_VERSION,
       currentVersion: CURRENT_VERSION,
