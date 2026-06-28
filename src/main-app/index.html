@@ -14,13 +14,44 @@
       const requirePassword = <?!= JSON.stringify(requirePassword) ?>;
     </script>
 
-    <!-- IPチェック -->
     <script>
       // 1. GAS側からIPチェックを行うかのフラグを受け取る
       const useIpControl = <?!= JSON.stringify(useIpControl) ?>;
       
       // サーバーから渡された許可IPリストをJS変数として展開
       const allowedIps = <?!= JSON.stringify(allowedIps) ?>;
+
+      // 💡 追加: IPが許可リスト（CIDR範囲含む）に合致するか判定する関数
+      function isIpAllowed(userIp, allowedRules) {
+        return allowedRules.some(rule => {
+          // 1. 完全一致のチェック
+          if (rule === userIp) return true;
+
+          // 2. CIDR（/24など）のチェック
+          if (rule.includes('/')) {
+            const [range, bitsStr] = rule.split('/');
+            const bits = parseInt(bitsStr, 10);
+            
+            const ipNum = ipToLong(userIp);
+            const rangeNum = ipToLong(range);
+            
+            if (ipNum === null || rangeNum === null) return false;
+
+            // マスクを作成 (例: /24 なら 上位24ビットが1、下位8ビットが0)
+            const mask = bits === 0 ? 0 : (~0 << (32 - bits));
+            return (ipNum & mask) === (rangeNum & mask);
+          }
+
+          return false;
+        });
+      }
+
+      // 💡 追加: IPアドレス（文字列）を32ビットの数値に変換するヘルパー関数
+      function ipToLong(ip) {
+        const parts = ip.split('.');
+        if (parts.length !== 4) return null;
+        return parts.reduce((acc, part) => (acc << 8) + parseInt(part, 10), 0) >>> 0;
+      }
 
       // 非同期でIP判定し、許可外なら画面を書き換える
       (async function checkIp() {
@@ -34,7 +65,8 @@
           const res = await fetch('https://api.ipify.org?format=json');
           const data = await res.json();
           
-          if (!allowedIps.includes(data.ip)) {
+          // 💡 変更: 完全一致の includes から、CIDR対応の判定関数に変更
+          if (!isIpAllowed(data.ip, allowedIps)) {
             // 許可されていないIPなら画面を白紙にしてメッセージを表示
             document.body.innerHTML = "<h1>アクセス拒否</h1><p>許可されていないIPアドレスからのアクセスです。</p>";
           }
@@ -45,13 +77,11 @@
     </script>
 
     <div id="main">
-      <!-- 読み込み中表示 -->
       <div v-if="!isReady" class="loading-container">
         <div class="spinner"></div>
         <p>読み込み中...</p>
       </div>
       
-      <!-- セッション切れ -->
       <div v-else-if="isSessionExpired" class="expired-container">
         <div class="expired-card">
           <div class="expired-icon">⚠️</div>
@@ -60,7 +90,6 @@
         </div>
       </div>
 
-      <!-- ヘッダー -->
       <header class="app-header" v-if="isReady && !isSessionExpired">
         <div class="header-logo">Web入退室</div>
 
@@ -86,7 +115,6 @@
         </div>
       </header>
 
-      <!-- アプリ画面 -->
       <div id="app" v-if="isReady && !isSessionExpired">
         <div class="user-info-box">
           <span class="user-info-label">ユーザー：</span>

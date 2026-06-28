@@ -77,7 +77,7 @@ function getAppUrl() {
   return ScriptApp.getService().getUrl();
 }
 
-// 設定オブジェクトを返す
+// 設定オブジェクトを返す（CIDR範囲指定対応版）
 function getConfig() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -86,19 +86,20 @@ function getConfig() {
   const useIpControl = configSheet.getRange('C2').getValue();
   const requirePassword = configSheet.getRange('D2').getValue();
 
-  // 変更：AllowedIpシートから許可IPリストを取得
+  // AllowedIpシートから許可IPリストを取得
   const allowedIpSheet = ss.getSheetByName('AllowedIp');
   if (!allowedIpSheet) {
     return { requirePassword: requirePassword, useIpControl: useIpControl, allowedIps: [] };
   }
   
   const data = allowedIpSheet.getDataRange().getValues();
+  // ヘッダーを除いたA列の文字列リスト（空行は除外）
+  const ipRules = data.slice(1).map(row => String(row[0]).trim()).filter(Boolean);
 
   return {
     requirePassword: requirePassword,
     useIpControl: useIpControl,
-    // 変更：IP列(A列=インデックス0)のみ返す
-    allowedIps: data.slice(1).map(row => row[0]) 
+    allowedIps: ipRules // ここに "192.168.1.0/24" などがそのまま入る
   }; 
 }
 
