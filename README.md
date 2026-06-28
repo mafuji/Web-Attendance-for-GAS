@@ -8,7 +8,8 @@
 
 ## 📘 マニュアル
 詳細な設定や使い方は、下記のマニュアルをご確認ください。
-* [Web入退室 マニュアルはこちら]
+* [Web入退室 管理者向けマニュアル](https://sites.google.com/view/wafg-manual-ad/%E3%83%9B%E3%83%BC%E3%83%A0)
+* [Web入退室 利用者向けマニュアル](https://sites.google.com/view/wafg-manual-user/%E3%83%9B%E3%83%BC%E3%83%A0)
 
 ---
 
