@@ -1,3 +1,7 @@
+// バージョン情報
+const CURRENT_VERSION = "v1.0.0"; 
+function getAppVersion() { return CURRENT_VERSION; }
+
 function doGet() {
   // 最初にログイン画面を表示
   return getHtmlTemplate('login')

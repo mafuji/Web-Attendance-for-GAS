@@ -1,4 +1,12 @@
 {
-  "version": "v1.0.0",
-  "description": ""
+  "apps": {
+    "main-app": {
+      "version": "v1.0.0",
+      "description": "初回リリース"
+    },
+    "controller-app": {
+      "version": "v1.0.0",
+      "description": "初回リリース"
+    }
+  }
 }
