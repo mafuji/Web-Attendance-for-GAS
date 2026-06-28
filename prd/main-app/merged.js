@@ -87,14 +87,19 @@ function getConfig() {
   const useIpControl = configSheet.getRange('C2').getValue();
   const requirePassword = configSheet.getRange('D2').getValue();
 
-  // 許可IPリスト
-  const controllerSheet = ss.getSheetByName('Controller');
-  const data = controllerSheet.getDataRange().getValues();
+  // 変更：AllowedIpシートから許可IPリストを取得
+  const allowedIpSheet = ss.getSheetByName('AllowedIp');
+  if (!allowedIpSheet) {
+    return { requirePassword: requirePassword, useIpControl: useIpControl, allowedIps: [] };
+  }
+  
+  const data = allowedIpSheet.getDataRange().getValues();
 
   return {
     requirePassword: requirePassword,
     useIpControl: useIpControl,
-    allowedIps: data.slice(1).map(row => row[1]) // IP列(B列)のみ返す
+    // 変更：IP列(A列=インデックス0)のみ返す
+    allowedIps: data.slice(1).map(row => row[0]) 
   }; 
 }
 
@@ -191,15 +196,13 @@ function generateSessionId() {
 
   console.log(`User: ${userEmail} のセッションを更新しました。ID: ${sessionId}`);
 
-  // 　 GAS側の書き込みをここで「強制同期・確定」させる（超重要）
+  //   GAS側の書き込みをここで「強制同期・確定」させる（超重要）
   SpreadsheetApp.flush(); 
 
-  return sessionId; // 　 生成したIDを返す  
+  return sessionId; //   生成したIDを返す  
 }
 
 // セッションの有効性チェック
-// @param {string} sessionId - クライアントから送られてきたセッションID
-// @return {boolean} セッションが有効であればtrue、そうでなければfalse
 function isSessionValid(sessionId) {
   if (!sessionId) return false;
 
@@ -213,7 +216,6 @@ function isSessionValid(sessionId) {
   if (lastRow < 2) return false;
 
   // A列(Email), E列(session_id), F列(session_expires_at)のデータを取得
-  // getRange(行, 列, 行数, 列数)
   const data = userSheet.getRange(2, 1, lastRow - 1, 6).getValues();
 
   // ユーザーの行を特定して検証
@@ -334,11 +336,7 @@ function getStatusOfActiveUser() {
   let lastAction = null;
 
   if (lastRow >= 2) {
-    // ⚠️ 💡 [重要] getRangeでシートからデータを「一括」でメモリ上に持ってきて、JSの高速構文で処理する
     const logValues = logSheet.getRange(2, 1, lastRow - 1, 3).getValues();
-    
-    // 配列を後ろから検索（最新の打刻を1発で見つける）
-    // ループを回さず、JavaScriptの最速エンジンに任せます
     const latestLog = logValues.reverse().find(row => row[1] === email);
     
     if (latestLog) {
@@ -433,7 +431,7 @@ function getSummaryData(startStr, endStr) {
     }
   });
 
-  // --- 4. 統計の算出（修正：ログがなくても全ユーザーを対象にする） ---
+  // --- 4. 統計の算出 ---
   const diffDays = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const targetDays = diffDays; 
 
@@ -443,7 +441,6 @@ function getSummaryData(startStr, endStr) {
   const userList = Object.values(userMap).map(user => {
     if (user.isCurrentlyIn) currentlyInCount++;
 
-    // 💡 ログの有無に関わらず出席率を計算（ログ0件なら 0% になる）
     user.rate = targetDays > 0 ? Math.round((user.inCount / targetDays) * 100) : 0;
     totalRateSum += user.rate;
 
@@ -452,16 +449,15 @@ function getSummaryData(startStr, endStr) {
       user.logs.reverse(); // 新しいログ順にする
     }
     
-    return user; // 💡 nullで除外せず、必ずユーザーデータを返す
+    return user; 
   });
 
   return {
     stats: {
-      // 全体の平均出席率はマスタにいる全員をベースに算出
       averageRate: userList.length > 0 ? Math.round(totalRateSum / userList.length) : 0,
       currentlyIn: currentlyInCount,
       totalActiveUsers: totalUserCount,
-      activeInPeriod: userList.length // 今回の変更で totalActiveUsers と同じになります
+      activeInPeriod: userList.length 
     },
     users: userList
   };
@@ -477,81 +473,17 @@ function getSummaryData(startStr, endStr) {
  * ============================================================================
  */
 function getAppMenuConfig() {
-  // 現時点ではメニューなし（将来追加したくなったらこの配列の中にオブジェクトを増やす）
-  return [
-    // 例: { type: "item", name: "? 新機能の実行", functionName: "app_newFeature" }
-  ];
+  return [];
 }
 
 /**
  * ============================================================================
  * 【約束事2】「アプリを公開する」ボタンを押したときに自動作成するトリガー
  * ============================================================================
+ * 変更：期限切れセッション削除の処理が不要になったため、設定配列を空に変更しました。
  */
 function getAppTriggerConfig() {
-  return [
-    { 
-      // 実行したい関数名
-      functionName: "deleteExpiredSessions", 
-      // GASの本物のメソッド名と引数をそのまま配列で指定！
-      methods: [
-        { name: "everyMinutes", args: [1] }
-      ]
-    }
-  ];
-}
-
-// Controllerシートから期限切れのセッション情報を削除する
-function deleteExpiredSessions() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Controller');
-
-  const lastRow = sheet.getLastRow();
-  // 　 データがそもそも存在しない（ヘッダー行以下がない）場合は即終了
-  if (lastRow < 2) return;
-
-  const lastColumn = sheet.getLastColumn();
-  const values = sheet.getDataRange().getValues();
-  
-  const header = values[0]; // 1行目（ヘッダー）を退避
-  const now = new Date().getTime();
-  const DATE_COL_INDEX = 2; // C列 (0始まりで2)
-
-  // 　 生き残るデータ（期限内データ）だけを格納する配列
-  const keepRows = [header]; 
-
-  // 2行目（インデックス1）以降をチェック
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const rawCell = row[DATE_COL_INDEX];
-
-    // 日付が不正、または空欄の行は安全のため残す（スキップ）
-    if (!rawCell || isNaN(Date.parse(rawCell))) {
-      keepRows.push(row);
-      continue;
-    }
-
-    const expiredAt = new Date(rawCell).getTime();
-
-    // 　 期限内のデータだけを配列にキープする（未来の時刻 ＞ 現在時刻）
-    if (expiredAt >= now) {
-      keepRows.push(row);
-    }
-  }
-
-  // 　 データに変化（削除対象）があった場合のみシートを更新
-  if (keepRows.length < values.length) {
-    // 1. 一旦シートのデータ部分をすべてクリア
-    sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
-    
-    // 2. 残ったデータがあれば、2行目以降に一括で書き込み
-    if (keepRows.length > 1) {
-      const dataToSet = keepRows.slice(1); // ヘッダーを除いた残りのデータ
-      sheet.getRange(2, 1, dataToSet.length, lastColumn).setValues(dataToSet);
-    }
-    
-    console.log(`期限切れセッションをクリアしました。残データ: ${keepRows.length - 1}件`);
-  }
+  return [];
 }
 
 function getHtmlTemplate(fileName){
@@ -575,5 +507,5 @@ function getHtmlTemplate(fileName){
     // GitHub Actionによりファイルからhtml文字列を自動生成してtemplatesに格納
 
     return HtmlService.createTemplate(templates[fileName]);
-   }
+  }
 }

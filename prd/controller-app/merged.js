@@ -23,8 +23,8 @@ function verifyPassword(inputPassword) {
     return { success: false, message: 'Configシートが見つかりません。' };
   }
   
-  // 3列目（C列）の2行目（インデックスは2行目=2, 3列目=3）の値を取得
-  const correctPassword = sheet.getRange(2, 3).getValue().toString();
+  // 変更：2列目（B列）の2行目（インデックスは2行目=2, 2列目=2）の値（password）を取得
+  const correctPassword = sheet.getRange(2, 2).getValue().toString();
   
   if (inputPassword === correctPassword) {
     // 認証成功: メインページのHTMLを生成して文字列として返す
@@ -42,38 +42,10 @@ function verifyPassword(inputPassword) {
   }
 }
 
-// セッションIDの更新（Merge処理）
+// セッションIDの更新処理からControllerシートへの書き込みをカット
 function mergeControllerData(sessionId, ipAddress) {
-  // 本体Appシートを取得
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const configSheet = ss.getSheetByName("Config"); 
-  const appSsId = configSheet.getRange("B2").getValue();
-  const appSs = SpreadsheetApp.openById(appSsId);
-  let sheet = appSs.getSheetByName('Controller');
-
-  // Controllerデータ取得
-  const data = sheet.getDataRange().getValues();
-  const now = new Date();
-  const expiredAt = new Date(now.getTime() + (5 * 60 * 1000)); // 5分後
-  
-  let foundRow = -1;
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === sessionId) {
-      foundRow = i + 1;
-      break;
-    }
-  }
-
-  if (foundRow > -1) {
-    // UPDATE: IPと期限を更新
-    sheet.getRange(foundRow, 2, 1, 2).setValues([[ipAddress, expiredAt]]);
-  } else {
-    // INSERT: 新規追加
-    sheet.appendRow([sessionId, ipAddress, expiredAt]);
-  }
-  
-  // ついでに最新のQR用データを返してあげると効率的です（任意）
-  //return getLatestQrData(); // QRにする場合こっち
+  // Controllerシートへの書き込み処理は丸ごとカットされました。
+  // 最新のパスワードのみを返します。
   return getLatestPassword(); 
 }
 
@@ -82,7 +54,8 @@ function getLatestPassword() {
   // 設定を取得
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Config");
-  const appSsId = configSheet.getRange("B2").getValue();
+  // 変更：1列目（A列）の2行目から本体AppのID（app_sheet_id）を取得
+  const appSsId = configSheet.getRange("A2").getValue();
 
   // 本体appの設定シートからパスワード取得
   const appSs = SpreadsheetApp.openById(appSsId);
@@ -175,7 +148,8 @@ function rotatePassword() {
   // 設定を取得
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Config"); 
-  const appSsId = configSheet.getRange("B2").getValue();
+  // 変更：1列目（A列）の2行目から本体AppのID（app_sheet_id）を取得
+  const appSsId = configSheet.getRange("A2").getValue();
 
   // ランダムなパスワード生成 (4桁の数字)
   const newPwd = Math.floor(1000 + Math.random() * 9000).toString();
@@ -189,10 +163,10 @@ function rotatePassword() {
   const previousPwdColumn = appConfigSheet.getRange("B1").getValue();
 
   if (pwdColumn !== "password" || previousPwdColumn !== "previous_password") {
-  console.log(`${pwdColumn}, ${previousPwdColumn}`);
-  console.log("書き込み対象のシートIDがWeb入退室シートではない可能性があるので、処理を中断します。");
-  return;
- }
+    console.log(`${pwdColumn}, ${previousPwdColumn}`);
+    console.log("書き込み対象のシートIDがWeb入退室シートではない可能性があるので、処理を中断します。");
+    return;
+  }
 
   const previousPwd = appConfigSheet.getRange("A2").getValue();
   appConfigSheet.getRange("B2").setValue(previousPwd); // 現在のパスワードを過去パスワード欄に移動
@@ -217,5 +191,5 @@ function getHtmlTemplate(fileName){
     // GitHub Actionによりファイルからhtml文字列を自動生成してtemplatesに格納
 
     return HtmlService.createTemplate(templates[fileName]);
-   }
+  }
 }
