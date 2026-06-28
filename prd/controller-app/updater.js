@@ -105,6 +105,33 @@ function fetchFromGitHub(version, fileName) {
 }
 
 /**
+ * HTMLのトースト（フロントエンド）から呼び出されるアップデート実行関数
+ * UIアラートを出さずにバックグラウンド処理のみを実行して結果を返す
+ */
+function executeUpdateFromHtml(latestVersion) {
+  Logger.log(`[HTMLトリガー] バージョン ${latestVersion} へのアップデートを開始します。`);
+  
+  try {
+    // 1. GitHubからコードとマニフェストを取得
+    const rawCode = fetchFromGitHub(latestVersion, TARGET_FILE);
+    if (!rawCode) throw new Error(`${TARGET_FILE} の取得に失敗しました。`);
+
+    const rawManifest = fetchFromGitHub(latestVersion, "appsscript.json");
+    if (!rawManifest) throw new Error("appsscript.json の取得に失敗しました。");
+    
+    // 2. プロジェクトファイルの書き換え (API経由、自動デプロイとトリガー設定まで内包)
+    // ※ 既存の updateProjectFiles 内の createDeployAndTrigger() も実行されます
+    const success = updateProjectFiles(rawCode, rawManifest, latestVersion);
+    
+    return success; // フロントへ true を返す
+    
+  } catch (e) {
+    Logger.log("❌ HTML経由のアップデートでエラーが発生しました: " + e.toString());
+    throw new Error(e.toString()); // フロント側の withFailureHandler へエラーを渡す
+  }
+}
+
+/**
  * Apps Script API を叩いて、プロジェクト内のファイルを一括書き換え
  */
 function updateProjectFiles(newCode, newManifest, latestVersion) {
