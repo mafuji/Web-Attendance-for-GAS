@@ -46,15 +46,15 @@
 
 <script>
   window.addEventListener('load', function() {
-    // ダッシュボード初期起動時の他の通信（getSummaryDataなど）との衝突を回避するため遅延実行
-    setTimeout(function() {
+    // アップデートの確認を行うコア関数
+    function checkSystemUpdate() {
       google.script.run
         .withSuccessHandler(function(result) {
           if (result && result.hasUpdate) {
             const toast = document.getElementById('update-toast');
             const msg = document.getElementById('update-toast-msg');
             
-            // 💡 管理者向けの案内メッセージに変更
+            // トーストにメッセージを注入して表示
             msg.innerText = `新しいバージョン (${result.latestVersion}) が利用可能です。\n\n管理者は、スプレッドシートの「アプリメニュー」から更新を実行するか、マニュアルに従って最新のGASコードを取得してデプロイをバージョンアップしてください。`;
             
             toast.style.display = 'block';
@@ -64,6 +64,12 @@
           console.error("アップデート確認エラー:", error);
         })
         .checkUpdateForHtml();
-    }, 1500); 
+    }
+
+    // 1. 初回起動時：起動から「1.5秒後（1500ミリ秒）」に最初のチェックを走らせる
+    setTimeout(checkSystemUpdate, 1500); 
+
+    // 2. 定期実行：その後は「24時間（86,400,000ミリ秒）」ごとに自動チェック
+    setInterval(checkSystemUpdate, 86400000); 
   });
 </script>
