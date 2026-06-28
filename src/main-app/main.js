@@ -353,7 +353,7 @@ function getStatusOfActiveUser() {
   };
 }
 
-// 期間指定付きのデータ取得 + 現在の稼働状況（超高速版）
+// 期間指定付きのデータ取得 + 現在の稼働状況（マスタ全表示版）
 function getSummaryData(startStr, endStr) {
   if (!isAdmin()) { 
     throw new Error("権限がありません");
@@ -390,8 +390,7 @@ function getSummaryData(startStr, endStr) {
     }
   });
 
-  // --- 2. [高速化] 現在の入室状態（isCurrentlyIn）を配列の逆順から一発判定 ---
-  // 全ログを頭から走査してフラグをパタパタ切り替えるのをやめ、最新ログから逆引きします
+  // --- 2. 現在の入室状態（isCurrentlyIn）を配列の逆順から一発判定 ---
   const checkedUsers = new Set();
   for (let i = logRows.length - 1; i >= 1; i--) {
     const [_, email, status] = logRows[i];
@@ -399,19 +398,17 @@ function getSummaryData(startStr, endStr) {
     
     if (status === 'IN') userMap[email].isCurrentlyIn = true;
     checkedUsers.add(email);
-    if (checkedUsers.size === totalUserCount) break; // 全員分決まったら終了
+    if (checkedUsers.size === totalUserCount) break; 
   }
 
-  // --- 3. [高速化] 指定期間内のログだけをピンポイントで解析 ---
+  // --- 3. 指定期間内のログだけをピンポイントで解析 ---
   logRows.slice(1).forEach(row => {
     const [timestamp, email, status] = row;
     if (!timestamp || !email || !status || !userMap[email]) return;
 
-    // 💡 まずタイムスタンプの数値(ms)で判定し、期間外なら new Date() すらせずに即スキップ
     const logTimeMs = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
     if (logTimeMs < startDate.getTime() || logTimeMs > endDate.getTime()) return;
 
-    // 期間内であることが確定して初めて、日付文字列やオブジェクトを作る
     const dateStr = Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd");
     const timeStr = Utilities.formatDate(timestamp, "JST", "HH:mm");
 
@@ -431,7 +428,7 @@ function getSummaryData(startStr, endStr) {
     }
   });
 
-  // --- 4. 統計の算出 ---
+  // --- 4. 統計の算出（修正：ログがなくても全ユーザーを対象にする） ---
   const diffDays = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const targetDays = diffDays; 
 
@@ -441,22 +438,25 @@ function getSummaryData(startStr, endStr) {
   const userList = Object.values(userMap).map(user => {
     if (user.isCurrentlyIn) currentlyInCount++;
 
+    // 💡 ログの有無に関わらず出席率を計算（ログ0件なら 0% になる）
+    user.rate = targetDays > 0 ? Math.round((user.inCount / targetDays) * 100) : 0;
+    totalRateSum += user.rate;
+
     if (user.logs.length > 0) {
-      user.rate = targetDays > 0 ? Math.round((user.inCount / targetDays) * 100) : 0;
-      totalRateSum += user.rate;
       user.logs.forEach(l => delete l.rawIn);
-      user.logs.reverse();
-      return user;
+      user.logs.reverse(); // 新しいログ順にする
     }
-    return null;
-  }).filter(u => u !== null);
+    
+    return user; // 💡 nullで除外せず、必ずユーザーデータを返す
+  });
 
   return {
     stats: {
+      // 全体の平均出席率はマスタにいる全員をベースに算出
       averageRate: userList.length > 0 ? Math.round(totalRateSum / userList.length) : 0,
       currentlyIn: currentlyInCount,
       totalActiveUsers: totalUserCount,
-      activeInPeriod: userList.length
+      activeInPeriod: userList.length // 今回の変更で totalActiveUsers と同じになります
     },
     users: userList
   };
