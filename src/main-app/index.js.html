@@ -58,14 +58,33 @@
         }
       },
 
-      // パスワード認証を挟んだ打刻処理
+      // パスワード認証とIP送信を挟んだ打刻処理
       async send(status) {
         let password = null;
 
+        Swal.fire({
+          title: '処理中...',
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: false,
+          didOpen: () => { Swal.showLoading(); }
+        });
+
+        // 💡 ⚡ボタンが押された瞬間に、超高速で自身のIPを取得（画面起動時ではなく今やる）
+        let userIp = "";
+        try {
+          const res = await fetch('https://api.ipify.org?format=json');
+          const data = await res.json();
+          userIp = data.ip;
+        } catch(e) {
+          Swal.fire("エラー", "ネットワーク環境が確認できませんでした。研究室のWi-Fiに接続されているか確認してください。", "error");
+          return;
+        }
+
         if (status === "IN" && requirePassword === true) {
+          Swal.close(); // パスワード入力のために一度ローディングを閉じる
           const { value: typedPassword } = await Swal.fire({
             title: 'パスワード入力',
-            text: '',
             input: 'password',
             inputAttributes: {
               maxlength: '4',
@@ -85,17 +104,10 @@
 
           if (!typedPassword) return;
           password = typedPassword;
-        }
 
-        Swal.fire({
-          title: '処理中...',
-          allowOutsideClick: false,
-          allowEscapeKey: false,
-          showConfirmButton: false,
-          didOpen: () => {
-            Swal.showLoading();
-          }
-        });
+          // 再度ローディングを表示
+          Swal.fire({ title: '処理中...', allowOutsideClick: false, showConfirmButton: false, didOpen: () => { Swal.showLoading(); } });
+        }
 
         const runner = google.script.run
           .withFailureHandler(e => {
@@ -112,7 +124,8 @@
 
             if (status === "IN" && requirePassword === true) {
               if (res.success === false) {
-                Swal.fire("認証失敗", res.message || "パスワードが正しくありません。", "error");
+                // 💡 GAS側から「IPエラー」か「パスワードエラー」のメッセージが返ってくる
+                Swal.fire("打刻失敗", res.message, "error");
                 return;
               }
               displayTime = res.timestamp;
@@ -135,10 +148,11 @@
             });
           });
 
+        // 💡 修正：末尾に取得した userIp を引数として追加してGASにまとめてブチ込む（通信は1回のみ）
         if (status === "IN" && requirePassword === true) {
-          runner.verifyPasswordAndInsert(status, this.sessionId, password);
+          runner.verifyPasswordAndInsert(status, this.sessionId, password, userIp);
         } else {
-          runner.insertRecord(status, this.sessionId);
+          runner.insertRecord(status, this.sessionId, userIp);
         }
       },
 

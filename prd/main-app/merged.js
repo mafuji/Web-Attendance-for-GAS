@@ -1,4 +1,3 @@
-// --- File: main.js ---
 // バージョン情報
 const CURRENT_VERSION = "v1.0.0"; 
 function getAppVersion() { return CURRENT_VERSION; }
@@ -78,7 +77,7 @@ function getAppUrl() {
   return ScriptApp.getService().getUrl();
 }
 
-// 設定オブジェクトを返す（CIDR範囲指定対応版）
+// 設定オブジェクトを返す（AllowedIp + AllowedIpFromAsn 統合対応版）
 function getConfig() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -87,20 +86,28 @@ function getConfig() {
   const useIpControl = configSheet.getRange('C2').getValue();
   const requirePassword = configSheet.getRange('D2').getValue();
 
-  // AllowedIpシートから許可IPリストを取得
+  let ipRules = [];
+
+  // ① AllowedIpシートから許可IPリストを取得
   const allowedIpSheet = ss.getSheetByName('AllowedIp');
-  if (!allowedIpSheet) {
-    return { requirePassword: requirePassword, useIpControl: useIpControl, allowedIps: [] };
+  if (allowedIpSheet) {
+    const data = allowedIpSheet.getDataRange().getValues();
+    const rules = data.slice(1).map(row => String(row[0]).trim()).filter(Boolean);
+    ipRules = ipRules.concat(rules);
   }
-  
-  const data = allowedIpSheet.getDataRange().getValues();
-  // ヘッダーを除いたA列の文字列リスト（空行は除外）
-  const ipRules = data.slice(1).map(row => String(row[0]).trim()).filter(Boolean);
+
+  // ② AllowedIpFromAsnシートから許可IPリストを取得（★ここを追加）
+  const allowedIpFromAsnSheet = ss.getSheetByName('AllowedIpFromAsn');
+  if (allowedIpFromAsnSheet) {
+    const dataFromAsn = allowedIpFromAsnSheet.getDataRange().getValues();
+    const rulesFromAsn = dataFromAsn.slice(1).map(row => String(row[0]).trim()).filter(Boolean);
+    ipRules = ipRules.concat(rulesFromAsn);
+  }
 
   return {
     requirePassword: requirePassword,
     useIpControl: useIpControl,
-    allowedIps: ipRules // ここに "192.168.1.0/24" などがそのまま入る
+    allowedIps: ipRules // 両方のシートのルールがマージされてここに入る
   }; 
 }
 
@@ -243,72 +250,115 @@ function isSessionValid(sessionId) {
   return false;
 }
 
-// 打刻レコード追加
-function insertRecord(status, sessionId) {
-  // 💡 1. 通常呼び出し時はここでセッションチェック
-  if (!isSessionValid(sessionId)) {
-    return null;
+// 💡 修正：打刻レコード追加（引数に userIp を追加）
+function insertRecord(status, sessionId, userIp) {
+  // 1. セッションチェック
+  if (!isSessionValid(sessionId)) return null;
+
+  // 2. ⚡サーバー側でIPアドレスの検証
+  if (!_checkIpOnServer(userIp)) {
+    throw new Error("許可されていないネットワーク（研究室外）からの打刻はできません。");
   }
 
-  // 💡 2. 実際の書き込み処理は、下の共通関数（_executeInsert）に丸投げする
-  return _executeInsert(status);
+  return _executeInsert(status, "", userIp);
 }
 
-// パスコードを検証し、正しければ打刻処理を行う（一括処理版）
-function verifyPasswordAndInsert(status, sessionId, inputPassword) {
-  // 💡 1. ここでセッションチェック（1回目）
-  if (!isSessionValid(sessionId)) {
-    return null;
+// パスワードを検証し、正しければ打刻
+function verifyPasswordAndInsert(status, sessionId, inputPassword, userIp) {
+  // 1. セッションチェック
+  if (!isSessionValid(sessionId)) return null;
+
+  // 2. ⚡サーバー側でIPアドレスの検証
+  if (!_checkIpOnServer(userIp)) {
+    return { success: false, message: '許可されていないネットワーク（研究室外）からの打刻はできません。' };
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Config");
-  
-  if (!configSheet) {
-    return { success: false, message: 'システムエラー:「Config」シートが見つかりません。' };
-  }
+  if (!configSheet) return { success: false, message: 'システムエラー:「Config」シートが見つかりません。' };
   
   const correctPassword = configSheet.getRange("A2").getValue().toString(); 
   const previousPassword = configSheet.getRange("B2").getValue().toString(); 
 
   if (inputPassword !== correctPassword && inputPassword !== previousPassword) {
-    return { 
-      success: false, 
-      message: 'パスコードが一致しません。最新のパスコードを入力してください。' 
-    };
+    return { success: false, message: 'パスコードが一致しません。最新のパスコードを入力してください。' };
   }
 
-  // 💡 2. パスワードが合っていれば、二度目のセッションチェックをパスして直接書き込む
   try {
-    const formattedTime = _executeInsert(status); // 👈 共通関数を直接呼ぶ（2回目のチェックをスキップ！）
-    
-    return {
-      success: true,
-      timestamp: formattedTime
-    };
-
+    const formattedTime = _executeInsert(status, inputPassword, userIp);
+    return { success: true, timestamp: formattedTime };
   } catch(e) {
     console.error("打刻エラー: ", e);
-    return { 
-      success: false, 
-      message: '打刻処理中にエラーが発生しました: ' + e.message 
-    };
+    return { success: false, message: '打刻処理中にエラーが発生しました: ' + e.message };
   }
 }
 
-// 💡 共通の書き込みロジック（シート操作のみを行う軽い関数）
-function _executeInsert(status) {
+// レコード追加処理
+function _executeInsert(status, inputPassword, userIp) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("AttendanceLog");
 
   const timestamp = new Date();
-  const user = Session.getActiveUser().getEmail();
+  const userEmail = Session.getActiveUser().getEmail();
+  
+  // ユーザー名をUserシートから取得（名前をログに残すため）
+  const userSheet = ss.getSheetByName('User');
+  const userData = userSheet.getDataRange().getValues();
+  const userRow = userData.find(row => row[0] === userEmail);
+  const userName = userRow ? (userRow[1] || "名前未設定") : "ゲストユーザー";
 
-  // ログに登録
-  sheet.appendRow([timestamp, user, status]);
+  // 値の正規化（nullやundefinedを弾く）
+  const pwdLog = inputPassword ? "'" + String(inputPassword) : "";
+  const ipLog = userIp ? String(userIp) : "";
+  const noteLog = ""; // G列: note (初期値は空)
 
-  // 打刻した時刻を返す
+  // ⚡【新仕様】に完全準拠して1行追加
+  // A: user_email, B: user_name, C: time_stamp, D: status, E: input_password, F: ip_address, G: note
+  sheet.appendRow([
+    userEmail,
+    userName,
+    timestamp,
+    status,
+    pwdLog,
+    ipLog,
+    noteLog
+  ]);
+
   return Utilities.formatDate(timestamp, "JST", "yyyy/MM/dd HH:mm:ss");
+}
+
+// 💡 新規追加：サーバー側のCIDR対応IPチェックロジック
+function _checkIpOnServer(userIp) {
+  const config = getConfig();
+  if (!config.useIpControl) return true; // 設定でIPチェックがオフならスルー
+  if (!userIp) return false; // IPが送られてきていなければ拒否
+
+  const allowedRules = config.allowedIps;
+  
+  return allowedRules.some(rule => {
+    if (rule === userIp) return true;
+
+    if (rule.includes('/')) {
+      const parts = rule.split('/');
+      const range = parts[0];
+      const bits = parseInt(parts[1], 10);
+      
+      const ipNum = _ipToLong(userIp);
+      const rangeNum = _ipToLong(range);
+      
+      if (ipNum === null || rangeNum === null) return false;
+
+      const mask = bits === 0 ? 0 : (~0 << (32 - bits));
+      return (ipNum & mask) === (rangeNum & mask);
+    }
+    return false;
+  });
+}
+
+function _ipToLong(ip) {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  return parts.reduce((acc, part) => (acc << 8) + parseInt(part, 10), 0) >>> 0;
 }
 
 // アクティブユーザーのステータスとセッションIDを取得
@@ -318,17 +368,15 @@ function getStatusOfActiveUser() {
 
   // --- 1. Userシートのメモリ上での一発検索 ---
   const userSheet = ss.getSheetByName('User');
-  const userData = userSheet.getDataRange().getValues(); // 全データを2次元配列として一括取得
-  
-  // A列(Email)が一致する行を高速検索
+  const userData = userSheet.getDataRange().getValues();
   const userRow = userData.find(row => row[0] === email);
   
   let userName = "ゲストユーザー";
   let sessionId = null;
   
   if (userRow) {
-    userName = userRow[1] || "名前未設定"; // B列: Name
-    sessionId = userRow[4] || null;        // E列: session_id
+    userName = userRow[1] || "名前未設定";
+    sessionId = userRow[4] || null;
   }
 
   // --- 2. AttendanceLogシートの高速スキャン ---
@@ -337,18 +385,19 @@ function getStatusOfActiveUser() {
   let lastAction = null;
 
   if (lastRow >= 2) {
-    const logValues = logSheet.getRange(2, 1, lastRow - 1, 3).getValues();
-    const latestLog = logValues.reverse().find(row => row[1] === email);
+    // ⚡ 取得範囲をA列(1)〜D列(4)までに拡張
+    const logValues = logSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    // A列（row[0]）にemailが入っているので、そこを基準に検索
+    const latestLog = logValues.reverse().find(row => row[0] === email);
     
     if (latestLog) {
       lastAction = {
-        timestamp: Utilities.formatDate(latestLog[0], "JST", "yyyy/MM/dd HH:mm:ss"), // A列: 日時
-        status: latestLog[2] // C列: ステータス (IN / OUT)
+        timestamp: Utilities.formatDate(latestLog[2], "JST", "yyyy/MM/dd HH:mm:ss"), // ⚡ C列(index 2)が日時
+        status: latestLog[3] // ⚡ D列(index 3)がステータス (IN / OUT)
       };
     }
   }
 
-  // --- 3. 結果をまとめて返す ---
   return {
     email: email,
     name: userName,
@@ -358,6 +407,7 @@ function getStatusOfActiveUser() {
 }
 
 // 期間指定付きのデータ取得 + 現在の稼働状況（マスタ全表示版）
+// 💡 大改造：集計ロジックの列割り当て変更
 function getSummaryData(startStr, endStr) {
   if (!isAdmin()) { 
     throw new Error("権限がありません");
@@ -394,10 +444,13 @@ function getSummaryData(startStr, endStr) {
     }
   });
 
-  // --- 2. 現在の入室状態（isCurrentlyIn）を配列の逆順から一発判定 ---
+  // --- 2. 現在の入室状態（isCurrentlyIn）の一発判定 ---
   const checkedUsers = new Set();
   for (let i = logRows.length - 1; i >= 1; i--) {
-    const [_, email, status] = logRows[i];
+    // ⚡ 新列仕様：A列[0]=email, D列[3]=status
+    const email = logRows[i][0];
+    const status = logRows[i][3];
+    
     if (!email || !userMap[email] || checkedUsers.has(email)) continue;
     
     if (status === 'IN') userMap[email].isCurrentlyIn = true;
@@ -407,7 +460,12 @@ function getSummaryData(startStr, endStr) {
 
   // --- 3. 指定期間内のログだけをピンポイントで解析 ---
   logRows.slice(1).forEach(row => {
-    const [timestamp, email, status] = row;
+    // ⚡ 新列仕様から必要な要素だけをマッピング
+    // A: email [0], C: timestamp [2], D: status [3]
+    const email = row[0];
+    const timestamp = row[2];
+    const status = row[3];
+    
     if (!timestamp || !email || !status || !userMap[email]) return;
 
     const logTimeMs = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
@@ -446,8 +504,9 @@ function getSummaryData(startStr, endStr) {
     totalRateSum += user.rate;
 
     if (user.logs.length > 0) {
+      delete user.logs.rawIn;
       user.logs.forEach(l => delete l.rawIn);
-      user.logs.reverse(); // 新しいログ順にする
+      user.logs.reverse(); 
     }
     
     return user; 
@@ -467,26 +526,258 @@ function getSummaryData(startStr, endStr) {
 //================================================================================
 // カスタムメニュー・トリガー用
 //================================================================================
-
 /**
  * ============================================================================
  * 【約束事1】アプリ固有のカスタムメニュー構成を返す
  * ============================================================================
  */
+/**
+ * 【約束事1】アプリ固有のカスタムメニュー構成を返す
+ */
 function getAppMenuConfig() {
-  return [];
+  return [
+    { type: "item", name: "🟢 ASN自動更新（1日1回）をONにする", functionName: "main_createAsnTriggerOnly" },
+    { type: "item", name: "🛑 ASN自動更新（1日1回）をOFFにする", functionName: "main_deleteAsnTriggerOnly" },
+    { type: "item", name: "⚡ ASNからCIDRを今すぐ手動更新", functionName: "main_refreshCidrFromAsnNow" },
+    { type: "separator" }, // 境界線
+    { type: "item", name: "🗑️ 未登録ユーザーのログ一括削除", functionName: "main_deleteUnknownUserLogs" } 
+  ];
+}
+/**
+ * カスタムメニュー「未登録ユーザーのログ一括削除」の実装
+*/
+function main_deleteUnknownUserLogs() {
+  const ui = SpreadsheetApp.getUi();
+  
+  // 1. 実行前の確認アラート
+  const response = ui.alert(
+    '確認', 
+    'Userシートに登録されていないユーザーの打刻ログをすべて削除します。よろしいですか？', 
+    ui.ButtonSet.YES_NO
+  );
+  if (response !== ui.Button.YES) return;
+
+  // 2. 実処理の関数を呼び出し、削除件数を受け取る
+  const deletedCount = deleteUnknownUserLogsOnly();
+
+  // 3. 実行後の結果アラート
+  if (deletedCount === 0) {
+    ui.alert('結果', '未登録ユーザーのログは見つかりませんでした。データはすべて綺麗です！', ui.ButtonSet.OK);
+  } else {
+    ui.alert('完了', `未登録ユーザーのログを ${deletedCount} 件削除しました。`, ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * ★新規追加：メニューからASN自動更新をONにする
+ */
+function main_createAsnTriggerOnly() {
+  createAsnTriggerOnly();
+
+  const ui = SpreadsheetApp.getUi();
+  ui.alert('定期処理の開始', '🟢 ASNの自動更新を開始しました。\n今後、毎日深夜1時〜2時の間に最新のCIDRへ自動洗い替えされます。', ui.ButtonSet.OK);
+}
+
+/**
+ * ★新規追加：メニューからASN自動更新をOFFにする
+ */
+function main_deleteAsnTriggerOnly() {
+  deleteAsnTriggerOnly();
+
+  const ui = SpreadsheetApp.getUi();
+  ui.alert('定期処理の停止', '🛑 ASNの自動更新を停止しました。', ui.ButtonSet.OK);
+}
+/**
+ * カスタムメニューから手動でASN同期を実行するためのラッパー
+ */
+function main_refreshCidrFromAsnNow() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert('確認', 'AllowedAsnシートに記載されたASN情報を元に、CIDRリストを今すぐ最新に洗い替えします。よろしいですか？', ui.ButtonSet.YES_NO);
+  if (response !== ui.Button.YES) return;
+
+  try {
+    refreshCidrFromAsn(); // ⑥の実処理を呼び出し
+    ui.alert('完了', '🟢 ASNからCIDRリストの同期・洗い替えが完了しました。', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('エラー', '同期中にエラーが発生しました: ' + e.message, ui.ButtonSet.OK);
+  }
 }
 
 /**
  * ============================================================================
  * 【約束事2】「アプリを公開する」ボタンを押したときに自動作成するトリガー
  * ============================================================================
- * 変更：期限切れセッション削除の処理が不要になったため、設定配列を空に変更しました。
  */
 function getAppTriggerConfig() {
-  return [];
+  return [
+    {
+      // 1日1回深夜にASN情報を同期するトリガー定義
+      functionName: "refreshCidrFromAsn",
+      methods: [
+        { name: "everyDays", args: [1] },
+        { name: "atHour", args: [1] } // 深夜1時〜2時の間に実行
+      ]
+    }    
+  ];
 }
 
+/**
+ * ============================================================================
+ * 処理ロジック
+ * ============================================================================
+ */
+/**
+ * ★新規追加：refreshCidrFromAsn トリガーを直接新規作成する
+ */
+function createAsnTriggerOnly() {
+  deleteAsnTriggerOnly(); // 重複防止
+
+  ScriptApp.newTrigger('refreshCidrFromAsn')
+    .timeBased()
+    .everyDays(1)
+    .atHour(1) // 深夜1時〜2時の間に実行
+    .create();
+}
+/**
+ * ★新規追加：refreshCidrFromAsnだけをピンポイントで削除する
+ */
+function deleteAsnTriggerOnly() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'refreshCidrFromAsn') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+}
+/**
+ * 💡 ASNからCIDRを取得して AllowedIpFromAsn を洗い替えする実処理（HackerTarget版）
+ */
+function refreshCidrFromAsn() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. AllowedAsn シートから取得対象のASN一覧を取り出す
+  const asnSheet = ss.getSheetByName('AllowedAsn');
+  if (!asnSheet) {
+    console.warn("AllowedAsnシートが見つかりません。処理をスキップします。");
+    return;
+  }
+  const asnData = asnSheet.getDataRange().getValues();
+  // ヘッダーを除き、"AS1234" や "1234" から数字のみを抽出して、"AS12345" の形式に統一
+  const asnList = asnData.slice(1).map(row => {
+    const match = String(row[0]).match(/\d+/);
+    return match ? `AS${match[0]}` : null;
+  }).filter(Boolean);
+
+  if (asnList.length === 0) {
+    console.warn("AllowedAsnシートに対象のASNが記載されていません。");
+    return;
+  }
+
+  // 2. 各ASNに対して HackerTarget API を叩いてCIDRを一括取得
+  let allPrefixes = [];
+  asnList.forEach(asn => {
+    // HackerTargetのURLに整形 (例: https://api.hackertarget.com/aslookup/?q=AS2500)
+    const url = `https://api.hackertarget.com/aslookup/?q=${asn}`;
+    try {
+      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      console.log(response);
+      if (response.getResponseCode() === 200) {
+        const text = response.getContentText();
+        
+        // HackerTargetは改行区切りのプレーンテキストを返すので行ごとに分割
+        const lines = text.split('\n');
+        
+        lines.forEach(line => {
+          const trimmedLine = line.trim();
+          // 空行や、エラーメッセージ（"error"等から始まる行）を除外
+          if (trimmedLine && !trimmedLine.toLowerCase().startsWith('error')) {
+            // 最初に見つかるASN情報行（ASN,NAME）は無視し、CIDR表記（スラッシュを含む行）だけを抽出
+            if (trimmedLine.includes('/')) {
+              allPrefixes.push(trimmedLine);
+            }
+          }
+        });
+      } else {
+        console.warn(`ASN: ${asn} の情報取得に失敗しました。ステータスコード: ${response.getResponseCode()}`);
+      }
+    } catch (e) {
+      console.error(`ASN: ${asn} の通信エラー: ` + e.toString());
+    }
+  });
+
+  // 重複を除去
+  allPrefixes = [...new Set(allPrefixes)].filter(Boolean);
+
+  // 3. AllowedIpFromAsn シートのデータをクリアして新リストで洗い替え
+  let targetSheet = ss.getSheetByName('AllowedIpFromAsn');
+  if (!targetSheet) {
+    targetSheet = ss.insertSheet('AllowedIpFromAsn');
+  }
+  
+  targetSheet.clearContents(); // ヘッダー含め全クリア
+  targetSheet.getRange(1, 1).setValue('allowed_cidr_from_asn'); // 新たにヘッダー書き込み
+
+  if (allPrefixes.length > 0) {
+    // 2次元配列に変換して一括書き込み
+    const writeData = allPrefixes.map(prefix => [prefix]);
+    targetSheet.getRange(2, 1, writeData.length, 1).setValues(writeData);
+  }
+
+  console.log(`AllowedIpFromAsn を更新(HackerTarget)しました。取得ASN件数: ${asnList.length}, 総CIDR数: ${allPrefixes.length}`);
+  SpreadsheetApp.flush();
+}
+/**
+ * Userシートに存在しないユーザーの打刻データをAttendanceLogシートから全て削除する（実処理）
+ * @return {number} 削除したレコード件数
+ */
+function deleteUnknownUserLogsOnly() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. Userシートから登録済みEmailの一覧を一括取得してSetに格納
+  const userSheet = ss.getSheetByName('User');
+  const userLastRow = userSheet.getLastRow();
+  if (userLastRow < 2) return 0; // ユーザーがいない場合は処理不可
+
+  const registeredEmails = new Set(
+    userSheet.getRange(2, 1, userLastRow - 1, 1).getValues().map(row => String(row[0]).trim())
+  );
+
+  // 2. AttendanceLogシートの全データを一括取得
+  const logSheet = ss.getSheetByName('AttendanceLog');
+  const logLastRow = logSheet.getLastRow();
+  if (logLastRow < 2) return 0; // ログがない場合は処理なし
+  
+  const logMaxColumns = logSheet.getLastColumn();
+  const logRange = logSheet.getRange(2, 1, logLastRow - 1, logMaxColumns);
+  const logValues = logRange.getValues();
+
+  // 3. メモリ上で「登録済みユーザーのログだけ」を残す
+  const filteredLogs = logValues.filter(row => {
+    const email = row[0] ? String(row[0]).trim() : "";
+    return registeredEmails.has(email);
+  });
+
+  // 削除対象の件数を計算
+  const deletedCount = logValues.length - filteredLogs.length;
+  if (deletedCount === 0) return 0;
+
+  // 4. シートをクリアして書き戻し
+  logRange.clearContent();
+  if (filteredLogs.length > 0) {
+    logSheet.getRange(2, 1, filteredLogs.length, logMaxColumns).setValues(filteredLogs);
+  }
+
+  // GAS側の書き込みを強制確定
+  SpreadsheetApp.flush();
+
+  return deletedCount;
+}
+
+/**
+ * ============================================================================
+ * merged.gs用
+ * ============================================================================
+ */
 function getHtmlTemplate(fileName){
   // 開発時はファイルから読込
   try {
