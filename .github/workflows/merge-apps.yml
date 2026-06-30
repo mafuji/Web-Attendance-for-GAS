@@ -122,9 +122,9 @@ jobs:
             console.log(`[Warning] Shared updater-alert.html not found at ${sharedAlertPath}`);
           }
 
-          // 2つのアプリを実行（各src内にコピーされた後なので、Mergied.jsのtemplatesにも自動で取り込まれます）
-          mergeApp('main-app', 'Mergied.js');
-          mergeApp('controller-app', 'Mergied.js');
+          // 2つのアプリを実行（各src内にコピーされた後なので、Merged.jsのtemplatesにも自動で取り込まれます）
+          mergeApp('main-app', 'Merged.js');
+          mergeApp('controller-app', 'Merged.js');
           EOF
 
       - name: Commit and Push changes
