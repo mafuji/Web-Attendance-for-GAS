@@ -410,7 +410,7 @@ function _ipToLong(ip) {
 }
 
 /**
- * 💡 ASNからCIDRを取得して AllowedIpFromAsn を洗い替えする実処理（HackerTarget版）
+ * 💡 ASNからCIDRを取得して AllowedIpFromAsn を洗い替えする実処理（IPinfo.io版）
  */
 function refreshCidrFromAsn() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -433,36 +433,54 @@ function refreshCidrFromAsn() {
     return;
   }
 
-  // 2. 各ASNに対して HackerTarget API を叩いてCIDRを一括取得
+  // 2. 各ASNに対して IPinfo API を叩いてCIDRを一括取得
   let allPrefixes = [];
+  
   asnList.forEach(asn => {
-    // HackerTargetのURLに整形 (例: https://api.hackertarget.com/aslookup/?q=AS2500)
-    const url = `https://api.hackertarget.com/aslookup/?q=${asn}`;
-    try {
-      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-      console.log(response);
-      if (response.getResponseCode() === 200) {
-        const text = response.getContentText();
+    // IPinfo.io のエンドポイント（例: https://ipinfo.io/AS15169）
+    const url = `https://ipinfo.io/${asn}`;
+    const maxRetries = 3; // 共有IPガチャ対策のリトライ回数
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+        const responseCode = response.getResponseCode();
         
-        // HackerTargetは改行区切りのプレーンテキストを返すので行ごとに分割
-        const lines = text.split('\n');
-        
-        lines.forEach(line => {
-          const trimmedLine = line.trim();
-          // 空行や、エラーメッセージ（"error"等から始まる行）を除外
-          if (trimmedLine && !trimmedLine.toLowerCase().startsWith('error')) {
-            // 最初に見つかるASN情報行（ASN,NAME）は無視し、CIDR表記（スラッシュを含む行）だけを抽出
-            if (trimmedLine.includes('/')) {
-              allPrefixes.push(trimmedLine);
-            }
+        if (responseCode === 200) {
+          const json = JSON.parse(response.getContentText());
+          
+          // IPinfoのレスポンスからIPv4のprefixes（CIDR）配列を取得
+          if (json.prefixes && Array.isArray(json.prefixes)) {
+            json.prefixes.forEach(item => {
+              // オブジェクトの中に netblock (CIDR文字列) が入っているため抽出
+              if (item.netblock && item.netblock.includes('/')) {
+                allPrefixes.push(item.netblock.trim());
+              }
+            });
+            console.log(`[Success] ${asn} から ${json.prefixes.length} 件のCIDRを取得しました。`);
+          } else {
+            console.warn(`[Warning] ${asn} のデータ構造に prefixes が見つかりませんでした。`);
           }
-        });
-      } else {
-        console.warn(`ASN: ${asn} の情報取得に失敗しました。ステータスコード: ${response.getResponseCode()}`);
+          break; // 成功したためリトライループを抜ける
+          
+        } else if (responseCode === 429) {
+          // もしGoogleのIP被りでレート制限を喰らった場合、数秒待って再試行
+          console.warn(`[Rate Limit] ${asn} で制限(429)を検知。${attempt}回目のリトライをします...`);
+          if (attempt < maxRetries) {
+            Utilities.sleep(4000); // 4秒待機してGoogleの別IPガチャを狙う
+          }
+        } else {
+          console.warn(`ASN: ${asn} の情報取得に失敗しました。ステータスコード: ${responseCode}`);
+          break; 
+        }
+      } catch (e) {
+        console.error(`ASN: ${asn} (試行 ${attempt}/${maxRetries}) の通信エラー: ` + e.toString());
+        if (attempt < maxRetries) Utilities.sleep(4000);
       }
-    } catch (e) {
-      console.error(`ASN: ${asn} の通信エラー: ` + e.toString());
     }
+    
+    // APIへの連続アクセスによる負荷を軽減するためのわずかなウェイト（0.5秒）
+    Utilities.sleep(500); 
   });
 
   // 重複を除去
@@ -483,7 +501,7 @@ function refreshCidrFromAsn() {
     targetSheet.getRange(2, 1, writeData.length, 1).setValues(writeData);
   }
 
-  console.log(`AllowedIpFromAsn を更新(HackerTarget)しました。取得ASN件数: ${asnList.length}, 総CIDR数: ${allPrefixes.length}`);
+  console.log(`AllowedIpFromAsn を更新(IPinfo)しました。取得ASN件数: ${asnList.length}, 総CIDR数: ${allPrefixes.length}`);
   SpreadsheetApp.flush();
 }
 
