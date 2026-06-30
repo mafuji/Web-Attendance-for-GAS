@@ -3,7 +3,7 @@
 // ==========================================
 const GITHUB_USER = "mafuji";
 const GITHUB_REPO = "Web-Attendance-for-GAS";
-const TARGET_FILE = "merged.js";
+const TARGET_FILE = "Merged.js";
 
 // ==========================================
 // アプリごとの固有設定
@@ -11,7 +11,7 @@ const TARGET_FILE = "merged.js";
 const TARGET_APP_DIR = "controller-app"; // GitHub Actionsでアプリごとに書き換えて複製する
 
 /**
- * 現在のアプリバージョンを merged.gs 側から安全に取得する
+ * 現在のアプリバージョンを Merged.gs 側から安全に取得する
  */
 function getCurrentAppVersion() {
   return (typeof getAppVersion === 'function') ? getAppVersion() : "v1.0.0";
@@ -51,7 +51,7 @@ function menu_checkVersionAndNotify() {
   }
 
   const latestVersion = appData.version;
-  const currentVersion = getCurrentAppVersion(); // 💡 merged.js から取得
+  const currentVersion = getCurrentAppVersion(); // 💡 Merged.js から取得
 
   if (latestVersion !== currentVersion) {
     const remotePath = `prd/${TARGET_APP_DIR}/${TARGET_FILE}`;
@@ -63,7 +63,7 @@ function menu_checkVersionAndNotify() {
                          `【更新内容】\n${appData.description || ""}\n\n` +
                          `--------------------------------------------\n` +
                          `💡 ［手動でコードを更新したい場合］\n` +
-                         `下記URLのコードを全コピーして「merged」に上書きしてください。\n` +
+                         `下記URLのコードを全コピーして「Merged」に上書きしてください。\n` +
                          `${downloadUrl}\n` +
                          `--------------------------------------------\n\n` +
                          `このまま自動アップデートを実行しますか？`;
@@ -140,7 +140,7 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   let mergedFileExists = false;
   
   projectContent.files = projectContent.files.map(file => {
-    if (file.name === "merged") {
+    if (file.name === "Merged") {
       file.source = newCode;
       mergedFileExists = true;
     }
@@ -159,7 +159,7 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   
   if (!mergedFileExists) {
     projectContent.files.push({
-      name: "merged",
+      name: "Merged",
       type: "SERVER_JS",
       source: newCode
     });
@@ -329,7 +329,7 @@ function executeDeployment(scriptId, token) {
 function setupProjectTriggers() {
   const allTriggers = ScriptApp.getProjectTriggers();
 
-  // merged.gs側からアプリ固有のトリガー設定を動的作成
+  // Merged.gs側からアプリ固有のトリガー設定を動的作成
   if (typeof getAppTriggerConfig === 'function') {
     const appTriggers = getAppTriggerConfig();
     
@@ -581,7 +581,7 @@ function checkUpdateForHtml() {
     if (!appData) return { hasUpdate: false, error: "データなし" };
 
     const latestVersion = appData.version;
-    const currentVersion = getCurrentAppVersion(); // 💡 merged.js から取得
+    const currentVersion = getCurrentAppVersion(); // 💡 Merged.js から取得
     
     return {
       hasUpdate: latestVersion !== currentVersion,
