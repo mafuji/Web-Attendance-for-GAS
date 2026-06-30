@@ -180,6 +180,25 @@ function updateProjectFiles(newCode, newManifest, latestVersion) {
   
   Logger.log("--- コードおよびマニフェストの書き換えが成功しました。続いて自動デプロイを開始します ---");
 
+  // ==========================================
+  // シート構造変更などのマイグレーション
+  // ==========================================
+  const currentVersion = getCurrentAppVersion(); // 💡 既存の現在のバージョン
+  showToast(`${currentVersion} から ${latestVersion} へシート構造を更新中...`, '⚙️ データベース移行');
+  
+  try {
+    if (typeof runMigration === 'function') {
+      // 💡 引数として「現在のバージョン」と「アップデート後のバージョン」を渡す
+      runMigration(currentVersion, latestVersion);
+      Logger.log(`🟢 マイグレーション処理が完了しました (${currentVersion} -> ${latestVersion})`);
+    } else {
+      Logger.log("ℹ️ runMigration 関数が見つからないため、マイグレーションをスキップします。");
+    }
+  } catch (migrationError) {
+    Logger.log("❌ マイグレーション処理中にエラーが発生しました: " + migrationError.toString());
+    throw new Error("プログラムの更新は成功しましたが、シート構造の更新に失敗しました。\nエラー: " + migrationError.toString());
+  }
+
   // デプロイとアプリ用トリガーの作成・更新へ進む
   createDeployAndTrigger();
   
