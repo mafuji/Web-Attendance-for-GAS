@@ -103,13 +103,16 @@ function refreshCidrFromAsn() {
     return;
   }
 
-  // 2. 各ASNに対して IPinfo API を叩いてCIDRを一括取得
+// 2. 各ASNに対して RIPEstat API を叩いてCIDRを一括取得
   let allPrefixes = [];
   
   asnList.forEach(asn => {
-    // IPinfo.io のエンドポイント（例: https://ipinfo.io/AS15169）
-    const url = `https://ipinfo.io/${asn}`;
-    const maxRetries = 3; // 共有IPガチャ対策のリトライ回数
+    // 数字だけを抽出 (例: AS7509 -> 7509)
+    const asnNumberOnly = asn.replace(/[^0-9]/g, '');
+    
+    // 💡 RIPE NCCが提供する、ASNが持つIP帯（プレフィックス）を返す公式API
+    const url = `https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS${asnNumberOnly}`;
+    const maxRetries = 3;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -119,29 +122,26 @@ function refreshCidrFromAsn() {
         if (responseCode === 200) {
           const json = JSON.parse(response.getContentText());
           
-          // IPinfoのレスポンスからIPv4のprefixes（CIDR）配列を取得
-          if (json.prefixes && Array.isArray(json.prefixes)) {
-            json.prefixes.forEach(item => {
-              // オブジェクトの中に netblock (CIDR文字列) が入っているため抽出
-              if (item.netblock && item.netblock.includes('/')) {
-                allPrefixes.push(item.netblock.trim());
+          // RIPEstatのレスポンス構造（data.prefixes）からIP帯を取り出す
+          if (json.data && json.data.prefixes && Array.isArray(json.data.prefixes)) {
+            json.data.prefixes.forEach(item => {
+              // item.prefix に "130.34.0.0/16" のような形式で入っています
+              if (item.prefix && item.prefix.includes('/')) {
+                allPrefixes.push(item.prefix.trim());
               }
             });
-            console.log(`[Success] ${asn} から ${json.prefixes.length} 件のCIDRを取得しました。`);
+            console.log(`[Success] ${asn} から ${json.data.prefixes.length} 件のCIDRを取得しました。`);
           } else {
             console.warn(`[Warning] ${asn} のデータ構造に prefixes が見つかりませんでした。`);
           }
-          break; // 成功したためリトライループを抜ける
+          break; // 成功
           
         } else if (responseCode === 429) {
-          // もしGoogleのIP被りでレート制限を喰らった場合、数秒待って再試行
-          console.warn(`[Rate Limit] ${asn} で制限(429)を検知。${attempt}回目のリトライをします...`);
-          if (attempt < maxRetries) {
-            Utilities.sleep(4000); // 4秒待機してGoogleの別IPガチャを狙う
-          }
+          console.warn(`[Rate Limit] ${asn} で制限(429)を検知。リトライします...`);
+          if (attempt < maxRetries) Utilities.sleep(4000);
         } else {
           console.warn(`ASN: ${asn} の情報取得に失敗しました。ステータスコード: ${responseCode}`);
-          break; 
+          break;
         }
       } catch (e) {
         console.error(`ASN: ${asn} (試行 ${attempt}/${maxRetries}) の通信エラー: ` + e.toString());
@@ -149,7 +149,7 @@ function refreshCidrFromAsn() {
       }
     }
     
-    // APIへの連続アクセスによる負荷を軽減するためのわずかなウェイト（0.5秒）
+    // APIへの連続アクセスによる負荷軽減
     Utilities.sleep(500); 
   });
 
